@@ -1,0 +1,54 @@
+// src/assets/styles/theme.scss
+// Base theme variables
+:root {
+  // Gray scale
+  --gray-000: #000000;
+  --gray-50: #f6f7f9;
+  --gray-100: #eef0f2;
+  --gray-200: #dddfe4;
+  --gray-300: #d5d8dd;
+  --gray-400: #d2d2d2;
+  --gray-500: #a5a8b4;
+  --gray-600: #60616c;
+  --gray-700: #292c3a;
+  --gray-800: #1e1f24;
+  --gray-900: #181a1e;
+  --gray-fff: #ffffff;
+
+  // Purple scale
+  --purple-10: #c333ff1a;
+  --purple-20: #c333ff33;
+  --purple-50: #c333ff80;
+  --purple-100: #c333ff;
+
+  // Red scale
+  --red-100: #ea3d43;
+
+  // Yellow scale
+  --yellow-100: #ffae2b;
+
+  // Green scale
+  --green-100: #32d470;
+
+  // Blue scale
+  --blue-100: #5380fb;
+
+  // Text colors
+  --text-title: #ffffffde;
+  --text-subtitle: rgba(255, 255, 255, 0.6);
+  --text-placeholder: rgba(255, 255, 255, 0.38);
+
+  // Border
+  --border-color: rgba(255, 255, 255, 0.1);
+
+  // Gradient
+  --gradient-primary: linear-gradient(to right, #9a1cff, #e0173e);
+
+  // Sidebar
+  --sidebar-width-collapsed: 68px;
+  --sidebar-width-expanded: 280px;
+
+  // Transition
+  --transition-fast: 0.2s ease;
+  --transition-normal: 0.3s ease;
+}

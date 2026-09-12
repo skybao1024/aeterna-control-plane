@@ -1,0 +1,197 @@
+name: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}
+
+x-backend-build: &backend-build
+  context: ./backend
+  dockerfile: Dockerfile
+  args:
+    PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.14.5-slim}
+
+x-backend-environment: &backend-environment
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-development-postgres-password}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:-development-redis-password}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-development-redis-password}
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:${IMAGE_TAG:-local}
+    build: *backend-build
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *backend-environment
+      ENV: ${ENV:-production}
+    volumes:
+      - backend-logs:/app/logs
+    networks:
+      - app-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:${API_PORT:-8001}/api/v1/config/health')
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  celery-worker:
+    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:${IMAGE_TAG:-local}
+    build: *backend-build
+    restart: unless-stopped
+    command: celery -A app.core.celery_app worker --loglevel=${CELERY_LOG_LEVEL:-info} -Q celery,scheduled_tasks
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *backend-environment
+      ENV: ${ENV:-production}
+    volumes:
+      - backend-logs:/app/logs
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  celery-beat:
+    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:${IMAGE_TAG:-local}
+    build: *backend-build
+    restart: unless-stopped
+    command: celery -A app.core.celery_app beat --loglevel=${CELERY_LOG_LEVEL:-info} --schedule=/app/logs/celerybeat-schedule
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *backend-environment
+      ENV: ${ENV:-production}
+    volumes:
+      - backend-logs:/app/logs
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-frontend:${IMAGE_TAG:-local}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginx:alpine}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    restart: unless-stopped
+    environment:
+      API_PORT: ${API_PORT:-8001}
+      NGINX_ENVSUBST_FILTER: ^API_PORT$$
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  flower:
+    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:${IMAGE_TAG:-local}
+    build: *backend-build
+    restart: unless-stopped
+    command: celery -A app.core.celery_app flower --port=5555 --basic-auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-change-me}
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      <<: *backend-environment
+      ENV: ${ENV:-production}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${FLOWER_PORT:-5555}:5555"
+    networks:
+      - app-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      celery-worker:
+        condition: service_started
+    profiles:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  postgres-data:
+  redis-data:
+  backend-logs:
+  frontend-node-modules:
+
+networks:
+  app-network:
+    driver: bridge

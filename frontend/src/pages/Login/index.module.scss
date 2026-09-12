@@ -1,0 +1,39 @@
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background-color: var(--bg-primary);
+  padding: 20px;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.title {
+  color: var(--text-primary) !important;
+  margin-bottom: 8px !important;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+}
+
+.form {
+  margin-bottom: 24px;
+}
+
+.footer {
+  text-align: center;
+  color: var(--text-secondary);
+}

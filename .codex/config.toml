@@ -1,0 +1,25 @@
+[mcp_servers.project_postgresql]
+command = "./deploy.sh"
+args = ["mcp-serve"]
+enabled = true
+required = false
+startup_timeout_sec = 20
+tool_timeout_sec = 15
+enabled_tools = [
+    "postgres_database_info",
+    "postgres_list_tables",
+    "postgres_describe_table",
+    "postgres_query",
+]
+default_tools_approval_mode = "auto"
+
+[mcp_servers.project_postgresql.tools.postgres_query]
+output_token_limit = 12000
+
+# Keep interview and review workflows read-only at the remote-server boundary.
+# Authentication remains local through GITHUB_PAT_TOKEN and is never committed.
+[mcp_servers.github]
+url = "https://api.githubcopilot.com/mcp/readonly"
+bearer_token_env_var = "GITHUB_PAT_TOKEN"
+enabled = true
+required = false

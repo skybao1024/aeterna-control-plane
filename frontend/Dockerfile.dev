@@ -1,0 +1,24 @@
+ARG NODE_IMAGE=node:20-alpine
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
+FROM ${NODE_IMAGE}
+
+WORKDIR /app
+
+ARG NPM_REGISTRY
+ENV PNPM_STORE_DIR=/pnpm/store
+
+RUN npm config set registry "${NPM_REGISTRY}" \
+    && npm install --global pnpm@10.33.0 \
+    && pnpm config set registry "${NPM_REGISTRY}" \
+    && pnpm config set store-dir "${PNPM_STORE_DIR}"
+
+COPY package.json pnpm-lock.yaml ./
+RUN --mount=type=cache,id=sprint-flow-demo-frontend-dev-pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile --prefer-offline
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["pnpm", "exec", "vite", "--mode", "dev", "--host", "0.0.0.0", "--port", "3000"]

@@ -1,0 +1,38 @@
+services:
+  backend:
+    environment:
+      ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8001}:${API_PORT:-8001}"
+
+  celery-worker:
+    environment:
+      ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+  celery-beat:
+    environment:
+      ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+  frontend:
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-8080}:80"
+
+  flower:
+    environment:
+      ENV: production
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379

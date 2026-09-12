@@ -1,0 +1,5 @@
+interface:
+  display_name: "Systematic Debugging"
+  short_description: "Find root causes before attempting fixes"
+policy:
+  allow_implicit_invocation: true

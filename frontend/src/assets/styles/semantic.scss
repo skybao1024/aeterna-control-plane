@@ -1,0 +1,33 @@
+// src/assets/styles/semantic.scss
+// Semantic theme variables
+
+:root {
+  // Background
+  --bg-primary: var(--gray-900);
+
+  // Text
+  --text-primary: #ffffffde;
+  --text-secondary: rgba(255, 255, 255, 0.6);
+
+  // Border
+  --border-default: var(--gray-700);
+
+  // Sidebar
+  --sidebar-bg: var(--gray-800);
+  --sidebar-sel-bg: var(--gray-700);
+  --sidebar-text: rgba(255, 255, 255, 0.6);
+
+  // Card
+  --card-bg: var(--gray-800);
+  --card-shadow: 0 0 40px rgba(195, 51, 255, 0.05);
+
+  // Button - Primary
+  --button-primary-bg: linear-gradient(100deg, #aa40ff 0%, #f92750 100%);
+  --button-primary-text: #fff;
+  --button-primary-hover-bg: linear-gradient(100deg, #c884ff 0%, #ff3e64 100%);
+
+  // Button - Default
+  --button-default-bg: transparent;
+  --button-default-border: var(--gray-600);
+  --button-default-text: var(--text-primary);
+}

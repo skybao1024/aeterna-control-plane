@@ -1,0 +1,52 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "基于 Vite + React + TypeScript 的项目模板",
+  "scripts": {
+    "dev": "vite --mode dev --open",
+    "build": "tsc --noEmit && vite build --mode prod",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,scss}\"",
+    "type-check": "tsc --noEmit",
+    "preview": "vite preview",
+    "preinstall": "npx only-allow pnpm"
+  },
+  "dependencies": {
+    "@ant-design/icons": "~6.1.0",
+    "antd": "^6.0.0",
+    "axios": "^1.9.0",
+    "dayjs": "^1.11.13",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.0",
+    "sass": "^1.88.0",
+    "zustand": "^5.0.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.26.0",
+    "@types/node": "^22.0.0",
+    "fast-glob": "^3.3.3",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@typescript-eslint/eslint-plugin": "^8.49.0",
+    "@typescript-eslint/parser": "^8.49.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "eslint": "9.9.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.4.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "5.1.0-rc.0",
+    "globals": "^16.1.0",
+    "prettier": "^3.5.3",
+    "terser": "^5.40.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.3.5",
+    "vite-plugin-chunk-split": "^0.5.0",
+    "vite-plugin-eslint": "^1.8.1",
+    "vite-plugin-svg-icons": "^2.0.1"
+  },
+  "packageManager": "pnpm@10.33.0+sha512.10568bb4a6afb58c9eb3630da90cc9516417abebd3fabbe6739f0ae795728da1491e9db5a544c76ad8eb7570f5c4bb3d6c637b2cb41bfdcdb47fa823c8649319"
+}

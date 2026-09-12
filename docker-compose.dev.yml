@@ -1,0 +1,94 @@
+services:
+  postgres:
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${POSTGRES_EXTERNAL_PORT:-5436}:5432"
+
+  redis:
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${REDIS_EXTERNAL_PORT:-6386}:6379"
+
+  backend:
+    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.14.5-slim}
+    environment:
+      ENV: development
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - ./backend:/app
+      - backend-logs:/app/logs
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8001}:${API_PORT:-8001}"
+    command: python main.py
+
+  celery-worker:
+    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.14.5-slim}
+    environment:
+      ENV: development
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - ./backend:/app
+      - backend-logs:/app/logs
+
+  celery-beat:
+    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.14.5-slim}
+    environment:
+      ENV: development
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - ./backend:/app
+      - backend-logs:/app/logs
+
+  frontend:
+    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-frontend:dev
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    environment:
+      VITE_API_BASE_URL: /api
+      API_PROXY_TARGET: http://backend:${API_PORT:-8001}
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_DEV_PORT:-3000}:3000"
+    command: sh -c "pnpm install --frozen-lockfile --prefer-offline && pnpm exec vite --mode dev --host 0.0.0.0 --port 3000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  flower:
+    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.14.5-slim}

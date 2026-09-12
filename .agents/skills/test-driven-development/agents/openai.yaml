@@ -1,0 +1,5 @@
+interface:
+  display_name: "Test-Driven Development"
+  short_description: "Run an explicit red-green-refactor workflow"
+policy:
+  allow_implicit_invocation: false
