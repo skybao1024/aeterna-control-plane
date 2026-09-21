@@ -8,6 +8,7 @@ public client protocol.
 
 - [Project architecture](./architecture/project-architecture.md)
 - [Docker deployment](./architecture/docker-deployment.md)
+- [ADR 0001: Account-policy transaction and outage semantics](./architecture/adr/0001-account-policy-transaction-and-outage-semantics.md)
 
 ## API
 
@@ -17,6 +18,7 @@ public client protocol.
 
 - [Development workflow](./development/development-framework.md)
 - [Read-only PostgreSQL MCP](./development/postgresql-mcp.md)
+- [I03 concurrency prototype results](./development/i03-concurrency-prototype-results.md)
 
 ## Security
 

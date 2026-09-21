@@ -8,11 +8,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from app.configs.backoffice_swagger_config import (
-    BACKOFFICE_OPENAPI_INFO, BACKOFFICE_OPENAPI_TAGS,
-    BACKOFFICE_SECURITY_SCHEMES, BACKOFFICE_SWAGGER_UI_PARAMETERS)
-from app.configs.client_swagger_config import (CLIENT_OPENAPI_INFO,
-                                               CLIENT_OPENAPI_TAGS,
-                                               CLIENT_SWAGGER_UI_PARAMETERS)
+    BACKOFFICE_OPENAPI_INFO,
+    BACKOFFICE_OPENAPI_TAGS,
+    BACKOFFICE_SECURITY_SCHEMES,
+    BACKOFFICE_SWAGGER_UI_PARAMETERS,
+)
+from app.configs.client_swagger_config import (
+    CLIENT_OPENAPI_INFO,
+    CLIENT_OPENAPI_TAGS,
+    CLIENT_SWAGGER_UI_PARAMETERS,
+)
 from app.core.config import settings
 
 # Set CORS origins based on environment
@@ -32,7 +37,7 @@ def create_client_app() -> FastAPI:
         description=CLIENT_OPENAPI_INFO["description"],
         version=CLIENT_OPENAPI_INFO["version"],
         contact=CLIENT_OPENAPI_INFO["contact"],
-        license_info=CLIENT_OPENAPI_INFO["license_info"],
+        license_info=CLIENT_OPENAPI_INFO.get("license_info"),
         openapi_url="/openapi.json",
         docs_url="/docs",
         redoc_url="/redoc",
@@ -66,7 +71,7 @@ def create_backoffice_app() -> FastAPI:
         description=BACKOFFICE_OPENAPI_INFO["description"],
         version=BACKOFFICE_OPENAPI_INFO["version"],
         contact=BACKOFFICE_OPENAPI_INFO["contact"],
-        license_info=BACKOFFICE_OPENAPI_INFO["license_info"],
+        license_info=BACKOFFICE_OPENAPI_INFO.get("license_info"),
         openapi_url="/openapi.json",
         docs_url="/docs",
         redoc_url="/redoc",
@@ -84,8 +89,7 @@ def create_backoffice_app() -> FastAPI:
     )
 
     # Register backoffice routes using route registry
-    from app.route.router_registry import (get_backoffice_routes,
-                                           register_routes)
+    from app.route.router_registry import get_backoffice_routes, register_routes
 
     register_routes(app, get_backoffice_routes())
 
@@ -101,7 +105,7 @@ def create_backoffice_app() -> FastAPI:
             routes=app.routes,
             openapi_version="3.0.2",
             contact=BACKOFFICE_OPENAPI_INFO["contact"],
-            license_info=BACKOFFICE_OPENAPI_INFO["license_info"],
+            license_info=BACKOFFICE_OPENAPI_INFO.get("license_info"),
         )
 
         # Add JWT authentication configuration
