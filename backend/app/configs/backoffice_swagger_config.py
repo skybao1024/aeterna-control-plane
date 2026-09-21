@@ -21,9 +21,11 @@ BACKOFFICE_SWAGGER_UI_PARAMETERS = {
 BACKOFFICE_OPENAPI_INFO = {
     "title": f"{settings.PROJECT_NAME} - Backoffice Management API",
     "description": f"""
-# Backoffice Management API Service
+# Aeterna Backoffice API
 
-This is the internal API interface documentation for the backoffice management system.
+This internal API supports operation of the Aeterna control plane. It must not
+provide access to local vault content or accept vault, message, media, or
+attachment uploads.
 
 ## Functional Modules
 
@@ -37,11 +39,6 @@ This is the internal API interface documentation for the backoffice management s
 - Permission management
 - User information maintenance
 - Password management functions
-
-### Cloud Storage Management (AWS)
-- File management functionality
-- S3 storage operations
-- Upload permission control
 
 ## Authentication Instructions
 
@@ -59,7 +56,6 @@ This is the internal API interface documentation for the backoffice management s
 - 🚀 **High Performance**: Based on FastAPI async framework
 - 📊 **Database**: PostgreSQL + SQLAlchemy ORM
 - 🎯 **Cache**: Redis cache system
-- ☁️ **Cloud Storage**: AWS S3 integration
 - 📝 **Documentation**: Auto-generated OpenAPI documentation
 - ⚡ **Async**: Full async processing for improved performance
 
@@ -69,10 +65,9 @@ All API responses follow a unified format:
 
 ```json
 {{
-    "success": true,
+    "code": 200,
     "message": "Operation successful",
-    "data": {{}},
-    "code": 200
+    "data": {{}}
 }}
 ```
 
@@ -91,14 +86,7 @@ All API responses follow a unified format:
 - **Documentation Type**: Backoffice Management API
     """,
     "version": "1.0.0",
-    "contact": {
-        "name": "Development Team",
-        "email": settings.ADMIN_EMAIL,
-    },
-    "license_info": {
-        "name": "MIT License",
-        "url": "https://opensource.org/licenses/MIT",
-    },
+    "contact": {"name": "Aeterna Operations", "email": settings.ADMIN_EMAIL},
 }
 
 # Backoffice OpenAPI Tags Configuration
@@ -117,14 +105,6 @@ BACKOFFICE_OPENAPI_TAGS = [
         "externalDocs": {
             "description": "Administrator documentation",
             "url": "https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/",
-        },
-    },
-    {
-        "name": "backoffice-aws",
-        "description": "Backoffice cloud storage management",
-        "externalDocs": {
-            "description": "AWS management documentation",
-            "url": "https://docs.aws.amazon.com/s3/",
         },
     },
 ]

@@ -6,23 +6,15 @@ from app.core.config import settings
 
 # Configure Celery
 celery_app = Celery(
-    "tasks",
+    "aeterna_control_plane",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=[
-        "app.schedule.celery_job",  # Main registry
-        "app.schedule.jobs.demo",  # Add specific job modules here
-    ],
+    include=[],
 )
 
-# Configure Celery Beat (for scheduled tasks)
-celery_app.conf.beat_schedule = {
-    "demo-every-minute": {
-        "task": "app.schedule.jobs.demo.execute",  # Updated to use the new task path
-        "schedule": 60.0,  # Every minute
-        "options": {"queue": "scheduled_tasks"},
-    },
-}
+# Schedules are added alongside their production task implementations. Keeping
+# this empty prevents template jobs from running in a deployed environment.
+celery_app.conf.beat_schedule = {}
 
 celery_app.conf.timezone = "UTC"
 celery_app.conf.task_queues = {

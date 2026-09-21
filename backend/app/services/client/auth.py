@@ -1,9 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Dict, Optional
 
-from google.auth.transport import requests as google_requests
-from google.oauth2 import id_token
-from sqlalchemy import or_, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -65,8 +63,9 @@ class ClientAuthService(AuthBase):
                         existing_user.last_name = last_name
                     await db.flush()
 
-                    # Generate and store new verification code (4 digits)
-                    code = self.verification_code_service.generate_code(4)
+                    code = self.verification_code_service.generate_code(
+                        settings.VERIFICATION_CODE_LENGTH
+                    )
                     await self.verification_code_service.send_verification_code(
                         redis, email, code
                     )
@@ -102,13 +101,13 @@ class ClientAuthService(AuthBase):
                 last_name=last_name,
                 is_active=True,
                 is_verified=False,  # Unverified status
-                auth_provider="email",
             )
             db.add(new_user)
             await db.flush()
 
-            # Generate and store verification code (4 digits)
-            code = self.verification_code_service.generate_code(4)
+            code = self.verification_code_service.generate_code(
+                settings.VERIFICATION_CODE_LENGTH
+            )
             await self.verification_code_service.send_verification_code(
                 redis, email, code
             )
@@ -203,7 +202,9 @@ class ClientAuthService(AuthBase):
             )
 
         # Generate new verification code
-        code = self.verification_code_service.generate_code(4)
+        code = self.verification_code_service.generate_code(
+            settings.VERIFICATION_CODE_LENGTH
+        )
         await self.verification_code_service.send_verification_code(redis, email, code)
 
         # Send verification email
@@ -219,7 +220,7 @@ class ClientAuthService(AuthBase):
 
         return {
             "message": "Verification code sent",
-            "cooldown_seconds": 60,
+            "cooldown_seconds": settings.VERIFICATION_CODE_COOLDOWN_SECONDS,
         }
 
     # ==================== Email Password Login ====================
@@ -228,9 +229,7 @@ class ClientAuthService(AuthBase):
         self, db: AsyncSession, email: str, password: str
     ) -> Optional[User]:
         """Authenticate user credentials"""
-        user_query = select(User).where(
-            User.email == email, User.auth_provider == "email"
-        )
+        user_query = select(User).where(User.email == email)
         result = await db.execute(user_query)
         user = result.scalar_one_or_none()
 
@@ -292,109 +291,6 @@ class ClientAuthService(AuthBase):
                 "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             }
 
-    # ==================== Google SSO ====================
-
-    async def google_login(self, db: AsyncSession, id_token_str: str) -> Dict:
-        """Google SSO login"""
-        async with transaction(db):
-            try:
-                # Verify Google ID Token
-                idinfo = id_token.verify_oauth2_token(
-                    id_token_str, google_requests.Request(), settings.GOOGLE_CLIENT_ID
-                )
-
-                # Check issuer
-                if idinfo["iss"] not in [
-                    "accounts.google.com",
-                    "https://accounts.google.com",
-                ]:
-                    raise APIException(status_code=400, message="Invalid token issuer")
-
-                google_id = idinfo["sub"]
-                email = idinfo.get("email")
-                first_name = idinfo.get("given_name")
-                last_name = idinfo.get("family_name")
-                avatar = idinfo.get("picture")
-
-                # Find or create user
-                user_query = select(User).where(
-                    or_(User.google_id == google_id, User.email == email)
-                )
-                result = await db.execute(user_query)
-                user = result.scalar_one_or_none()
-
-                if user:
-                    # Update Google ID (if user previously registered with email)
-                    if not user.google_id:
-                        user.google_id = google_id
-                        user.auth_provider = "google"
-
-                    # Update avatar and name
-                    if avatar:
-                        user.avatar = avatar
-                    if first_name:
-                        user.first_name = first_name
-                    if last_name:
-                        user.last_name = last_name
-
-                    user.last_active_at = datetime.now(UTC)
-                else:
-                    # Create new user
-                    user = User(
-                        email=email,
-                        google_id=google_id,
-                        first_name=first_name,
-                        last_name=last_name,
-                        avatar=avatar,
-                        is_active=True,
-                        is_verified=True,
-                        auth_provider="google",
-                        hashed_password="",  # Google users have no password
-                    )
-                    db.add(user)
-                    await db.flush()
-
-                # Mark old tokens as invalid
-                stmt = (
-                    update(Token)
-                    .where((Token.user_id == user.id) & (Token.is_active == True))
-                    .values(is_active=False)
-                )
-                await db.execute(stmt)
-
-                # Generate token
-                access_token = AuthBase.create_access_token(
-                    str(user.id),
-                    scope="client",
-                    expires_delta=timedelta(
-                        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-                    ),
-                )
-                refresh_token = AuthBase.create_refresh_token(str(user.id))
-
-                # Store refresh token
-                hashed_token = AuthBase.hash_token(refresh_token)
-                token = Token(
-                    user_id=user.id,
-                    token=hashed_token,
-                    expires_at=datetime.now(UTC)
-                    + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
-                    is_active=True,
-                )
-                db.add(token)
-                await db.flush()
-
-                return {
-                    "access_token": access_token,
-                    "refresh_token": refresh_token,
-                    "token_type": "bearer",
-                }
-
-            except ValueError as e:
-                raise APIException(
-                    status_code=400, message=f"Invalid Google token: {str(e)}"
-                )
-
     # ==================== Token Refresh and Logout ====================
 
     async def refresh_token(self, db: AsyncSession, refresh_token: str) -> Dict:
@@ -423,7 +319,12 @@ class ClientAuthService(AuthBase):
             scope="client",
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )
-        return {"access_token": access_token, "token_type": "bearer"}
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        }
 
     async def logout(self, db: AsyncSession, refresh_token: str) -> None:
         """User logout"""

@@ -21,43 +21,30 @@ CLIENT_SWAGGER_UI_PARAMETERS = {
 CLIENT_OPENAPI_INFO = {
     "title": f"{settings.PROJECT_NAME} - Client API",
     "description": f"""
-# Client API Service
+# Aeterna Client API
 
-This is the public API interface documentation for client applications.
+This API is used by Aeterna desktop clients. It only manages accounts,
+registered devices, heartbeat state, contacts, notifications, and delayed
+recovery coordination.
 
-## Functional Modules
+## Data boundary
 
-### Demo Functions (Demo)
-- Basic demonstration interfaces
-- Function testing interfaces
+- Vault contents, messages, media, and attachments must never be uploaded.
+- Master passwords, emergency recovery codes, and vault data keys must never be uploaded.
+- New endpoints must be reviewed against this boundary before registration.
 
-### Configuration Management (Config)
-- Client configuration retrieval
-- System configuration queries
+The currently registered routes are framework foundations. Product endpoints
+will be added only with their domain services, migrations, tests, and audit rules.
 
-### Cloud Storage Service (AWS)
-- File upload functionality
-- S3 storage integration
-
-## Technical Features
-
-- 🚀 **High Performance**: Based on FastAPI async framework
-- 📊 **Database**: PostgreSQL + SQLAlchemy ORM
-- 🎯 **Cache**: Redis cache system
-- ☁️ **Cloud Storage**: AWS S3 integration
-- 📝 **Documentation**: Auto-generated OpenAPI documentation
-- ⚡ **Async**: Full async processing for improved performance
-
-## Response Format
+## Response format
 
 All API responses follow a unified format:
 
 ```json
 {{
-    "success": true,
+    "code": 200,
     "message": "Operation successful",
-    "data": {{}},
-    "code": 200
+    "data": {{}}
 }}
 ```
 
@@ -68,41 +55,18 @@ All API responses follow a unified format:
 - **Documentation Type**: Client API
     """,
     "version": "1.0.0",
-    "contact": {
-        "name": "Development Team",
-        "email": settings.ADMIN_EMAIL,
-    },
-    "license_info": {
-        "name": "MIT License",
-        "url": "https://opensource.org/licenses/MIT",
-    },
+    "contact": {"name": "Aeterna Operations", "email": settings.ADMIN_EMAIL},
 }
 
 # Client OpenAPI Tags Configuration
 CLIENT_OPENAPI_TAGS = [
     {
-        "name": "client-demo",
-        "description": "Client demonstration interfaces",
-        "externalDocs": {
-            "description": "Learn more",
-            "url": "https://fastapi.tiangolo.com/",
-        },
-    },
-    {
         "name": "client-config",
-        "description": "Client configuration interfaces",
-        "externalDocs": {
-            "description": "Configuration documentation",
-            "url": "https://fastapi.tiangolo.com/tutorial/",
-        },
+        "description": "Health and safe client configuration interfaces",
     },
     {
-        "name": "client-aws",
-        "description": "Client cloud storage interfaces",
-        "externalDocs": {
-            "description": "AWS S3 documentation",
-            "url": "https://docs.aws.amazon.com/s3/",
-        },
+        "name": "client-auth",
+        "description": "Desktop client account authentication interfaces",
     },
 ]
 

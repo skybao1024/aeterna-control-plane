@@ -1,7 +1,6 @@
 from fastapi import APIRouter
 from sqlalchemy import text
 
-from app.common.release import RELEASE_CONFIG
 from app.db.session import get_db
 from app.schemas.response import ApiResponse
 from app.services.common.redis import redis_client
@@ -50,8 +49,3 @@ async def health_check():
         )
 
     return ApiResponse.success(data=health_status)
-
-
-@router.get("/release")
-async def get_release_config():
-    return ApiResponse.success(data=RELEASE_CONFIG)

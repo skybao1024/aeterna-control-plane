@@ -1,8 +1,6 @@
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import HTTPException
-
-from app.common.language import get_message
 
 
 class APIException(HTTPException):
@@ -12,11 +10,8 @@ class APIException(HTTPException):
         message: str = "API exception",
         status_code: int = 400,
         data: Any = None,
-        language: Optional[str] = None,
     ) -> None:
-        # Translate the message based on the language
-        translated_message = get_message(message, language)
-        super().__init__(status_code=status_code, detail=translated_message)
+        super().__init__(status_code=status_code, detail=message)
         self.code = code  # Business error code
         self.data = data  # Optional additional data
 
@@ -27,11 +22,8 @@ class ValidationError(APIException):
         self,
         message: str = "Validation error",
         data: Any = None,
-        language: Optional[str] = None,
     ):
-        super().__init__(
-            code=1001, message=message, status_code=400, data=data, language=language
-        )
+        super().__init__(code=1001, message=message, status_code=400, data=data)
 
 
 class AuthenticationError(APIException):
@@ -39,11 +31,8 @@ class AuthenticationError(APIException):
         self,
         message: str = "Authentication failed",
         data: Any = None,
-        language: Optional[str] = None,
     ):
-        super().__init__(
-            code=1002, message=message, status_code=401, data=data, language=language
-        )
+        super().__init__(code=1002, message=message, status_code=401, data=data)
 
 
 class AuthorizationError(APIException):
@@ -51,11 +40,8 @@ class AuthorizationError(APIException):
         self,
         message: str = "Permission denied",
         data: Any = None,
-        language: Optional[str] = None,
     ):
-        super().__init__(
-            code=1003, message=message, status_code=403, data=data, language=language
-        )
+        super().__init__(code=1003, message=message, status_code=403, data=data)
 
 
 class NotFoundError(APIException):
@@ -63,11 +49,8 @@ class NotFoundError(APIException):
         self,
         message: str = "Resource not found",
         data: Any = None,
-        language: Optional[str] = None,
     ):
-        super().__init__(
-            code=1004, message=message, status_code=404, data=data, language=language
-        )
+        super().__init__(code=1004, message=message, status_code=404, data=data)
 
 
 class ServerError(APIException):
@@ -75,20 +58,14 @@ class ServerError(APIException):
         self,
         message: str = "Internal server error",
         data: Any = None,
-        language: Optional[str] = None,
     ):
-        super().__init__(
-            code=1005, message=message, status_code=500, data=data, language=language
-        )
+        super().__init__(code=1005, message=message, status_code=500, data=data)
 
 
 class ForeignKeyViolationError(APIException):
     def __init__(
         self,
-        message: str = 'It is linked to trips or other resources. Please mark it as "inactive" to hide it from users',
+        message: str = "Resource is still referenced and cannot be removed",
         data: Any = None,
-        language: Optional[str] = None,
     ):
-        super().__init__(
-            code=1006, message=message, status_code=400, data=data, language=language
-        )
+        super().__init__(code=1006, message=message, status_code=400, data=data)

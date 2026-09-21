@@ -1,36 +1,27 @@
-# FastAPI Template Documentation Center
+# Aeterna Control Plane Documentation
 
-## 📚 Documentation Structure
+This directory contains backend-specific documentation. The desktop repository
+remains authoritative for product behavior, cryptography, recovery UX, and the
+public client protocol.
 
-### 🏗️ [Architecture Documentation](./architecture/)
-- [Project Architecture Overview](./architecture/project-architecture.md) - Overall project architecture design and technology stack explanation
+## Architecture
 
-### 🔧 [Development Documentation](./development/)
-- [Development Framework Guide](./development/development-framework.md) - Complete development environment configuration and development workflow
-- [Claude Code Hooks Configuration](./development/claude-hooks.md) - Automated code quality checks and formatting hooks
-- [Project PostgreSQL MCP](./development/postgresql-mcp.md) - Read-only AI development database inspection
+- [Project architecture](./architecture/project-architecture.md)
+- [Docker deployment](./architecture/docker-deployment.md)
 
-### 📖 [API Documentation](./api/)
-- [Swagger API Documentation Guide](./api/swagger-guide.md) - API documentation usage guide
+## API
 
-### 💼 [Business Documentation](./business/)
-- [个人 Sprint 任务板 PRD](./business/personal-sprint-board-prd.md) - MVP 产品、页面设计、功能、API、测试与验收需求
+- [OpenAPI and Swagger](./api/swagger-guide.md)
 
-## 🚀 Quick Start
+## Development
 
-1. **View Architecture**: [Project Architecture Overview](./architecture/project-architecture.md)
-2. **Environment Setup**: [Development Framework Guide](./development/development-framework.md)
-3. **Configure Hooks**: [Claude Code Hooks Configuration](./development/claude-hooks.md)
-4. **API Usage**: [Swagger Documentation Guide](./api/swagger-guide.md)
+- [Development workflow](./development/development-framework.md)
+- [Read-only PostgreSQL MCP](./development/postgresql-mcp.md)
 
-## 📋 Documentation Status
+## Security
 
-| Documentation | Status | Last Updated |
-|---------------|---------|--------------|
-| Project Architecture | ✅ Completed | 2025-09-17 |
-| Development Framework | ✅ Completed | 2025-09-17 |
-| Claude Code Hooks | ✅ Completed | 2026-01-08 |
-| API Documentation | ✅ Completed | Previously created |
-| 个人 Sprint 任务板 PRD | 📝 待评审 | 2026-08-15 |
+- [Secret handling and AI isolation](./security/ai-security-isolation.md)
 
-Based on the tip project's documentation management model, a complete documentation system has been established for the fastapi-template project.
+Documents from the original template are not architectural authority. If a
+document conflicts with the root `AGENTS.md`, `ARCHITECTURE.md`, or the desktop
+design, follow the root guidance and update the stale document.

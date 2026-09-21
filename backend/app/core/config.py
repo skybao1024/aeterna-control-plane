@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     ENV: str = "development"  # development, preview, or production
 
     # Basic configuration
-    PROJECT_NAME: str = "FastAPI Template"
+    PROJECT_NAME: str = "Aeterna Control Plane"
     API_V1_STR: str = "/api/v1"
     API_PORT: int = 8001  # Default API server port
 
@@ -52,16 +52,16 @@ class Settings(BaseSettings):
     MAIL_USERNAME: str = ""
     MAIL_PASSWORD: str = ""
     MAIL_FROM_ADDRESS: str = "noreply@example.com"
-    MAIL_FROM_NAME: str = "name"
+    MAIL_FROM_NAME: str = "Aeterna"
     MAIL_ENCRYPTION: str = "none"
 
     # Brevo configuration (alternative email provider)
     BREVO_API_KEY: str = ""
     BREVO_EMAIL_FROM: str = "noreply@example.com"
-    BREVO_EMAIL_FROM_NAME: str = "name"
+    BREVO_EMAIL_FROM_NAME: str = "Aeterna"
 
     # Administrator email
-    ADMIN_EMAIL: str = "dev@zetos.fr"
+    ADMIN_EMAIL: str = "admin@example.com"
 
     # JWT configuration
     # SECURITY: SECRET_KEY MUST be set in .env file!
@@ -70,16 +70,6 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-
-    # S3 configuration
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_REGION: str = "us-east-1"
-    AWS_BUCKET_NAME: str = ""
-    AWS_ENDPOINT: str = "https://s3.amazonaws.com"
-
-    # Google OAuth configuration (ID Token verification)
-    GOOGLE_CLIENT_ID: str = ""
 
     # Frontend URL configuration
     FRONTEND_URL: str = "http://localhost:3000"
@@ -96,6 +86,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"  # Optional, specify encoding
+        extra = "ignore"  # Ignore stale keys from earlier local templates
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

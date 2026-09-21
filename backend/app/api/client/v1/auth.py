@@ -6,12 +6,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.client.deps import (ClientAuthService, get_client_auth_service,
                                  get_redis)
 from app.db.session import get_db
-from app.schemas.client.auth import (GoogleLogin, Login, Logout,
-                                     MessageResponse, RefreshToken,
-                                     RequestPasswordReset, ResendVerification,
-                                     ResendVerificationResponse, ResetPassword,
-                                     SignUp, SignUpResponse, Token,
-                                     VerifyEmail, VerifyEmailResponse)
+from app.schemas.client.auth import (
+    Login,
+    Logout,
+    MessageResponse,
+    RefreshToken,
+    RequestPasswordReset,
+    ResendVerification,
+    ResendVerificationResponse,
+    ResetPassword,
+    SignUp,
+    SignUpResponse,
+    Token,
+    VerifyEmail,
+    VerifyEmailResponse,
+)
 from app.schemas.response import ApiResponse
 from app.services.common.redis import RedisClient
 
@@ -37,7 +46,7 @@ async def signup(
     Step 1: Create account and send verification code
 
     - Create unverified user account
-    - Generate 4-digit verification code
+    - Generate an email verification code
     - Valid for 5 minutes, 60 seconds cooldown between sends
     - Send email to specified address
     """
@@ -64,7 +73,7 @@ async def verify_email(
     """
     Step 2: Verify email
 
-    - Verify 4-digit code
+    - Verify the email code
     - Mark user as verified
     - Auto-login and return token
     """
@@ -120,25 +129,6 @@ async def login(
     - Return access_token and refresh_token
     """
     result = await service.login(db, login_data.email, login_data.password)
-    return ApiResponse.success(data=result)
-
-
-@router.post("/google-login", response_model=Token)
-@limiter.limit("10/minute")  # SECURITY: Limit Google login attempts
-async def google_login(
-    request: Request,  # Required for rate limiting
-    data: GoogleLogin,
-    db: AsyncSession = Depends(get_db),
-    service: ClientAuthService = Depends(get_client_auth_service),
-):
-    """
-    Google SSO login
-
-    - Verify Google ID Token
-    - Create or update user account
-    - Return access_token and refresh_token
-    """
-    result = await service.google_login(db, data.id_token)
     return ApiResponse.success(data=result)
 
 

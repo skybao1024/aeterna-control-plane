@@ -8,7 +8,7 @@ class UserResponse(BaseModel):
     """
     User response schema - secure version
 
-    SECURITY: Does not include sensitive fields (hashed_password, google_id, etc.)
+    SECURITY: Does not include sensitive fields such as the password hash.
     """
 
     id: int
@@ -19,7 +19,6 @@ class UserResponse(BaseModel):
     gender: Optional[str] = None
     is_active: bool
     is_verified: bool
-    auth_provider: str
     last_active_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime

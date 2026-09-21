@@ -25,19 +25,9 @@ CLIENT_ROUTES = [
         tags=["client-auth"],
     ),
     RouteConfig(
-        module_path="app.api.client.v1.demo",
-        prefix=f"{settings.API_V1_STR}/demo",
-        tags=["client-demo"],
-    ),
-    RouteConfig(
         module_path="app.api.client.v1.config",
         prefix=f"{settings.API_V1_STR}/config",
         tags=["client-config"],
-    ),
-    RouteConfig(
-        module_path="app.api.client.v1.aws",
-        prefix=f"{settings.API_V1_STR}/aws",
-        tags=["client-aws"],
     ),
 ]
 
@@ -52,11 +42,6 @@ BACKOFFICE_ROUTES = [
         module_path="app.api.backoffice.v1.admin",
         prefix=f"{settings.API_V1_STR}/backoffice/admins",
         tags=["backoffice-admin"],
-    ),
-    RouteConfig(
-        module_path="app.api.backoffice.v1.aws",
-        prefix=f"{settings.API_V1_STR}/backoffice/aws",
-        tags=["backoffice-aws"],
     ),
 ]
 

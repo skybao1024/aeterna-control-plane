@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.backoffice.deps import (BackofficeAuthService,
@@ -8,10 +10,13 @@ from app.schemas.backoffice.auth import Login, Logout, RefreshToken, Token
 from app.schemas.response import ApiResponse
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit("5/minute")
 async def login(
+    request: Request,
     login_data: Login,
     db: AsyncSession = Depends(get_db),
     service: BackofficeAuthService = Depends(get_backoffice_auth_service),

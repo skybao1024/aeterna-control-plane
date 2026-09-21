@@ -1,15 +1,14 @@
-// API module example
 import service from '@/utils/https';
 
-// Example API types
-interface LoginRequest {
+export interface LoginRequest {
   email: string;
   password: string;
 }
 
-interface LoginResponse {
+export interface LoginResponse {
   access_token: string;
   refresh_token: string;
+  token_type: string;
 }
 
 interface ApiResponse<T> {
@@ -18,12 +17,6 @@ interface ApiResponse<T> {
   data: T;
 }
 
-// Example login API
 export const login = (data: LoginRequest) => {
-  return service.post<ApiResponse<LoginResponse>>('/v1/auth/login', data);
-};
-
-// Example get current user API
-export const getCurrentUser = () => {
-  return service.get<ApiResponse<{ email: string; name: string }>>('/v1/users/me');
+  return service.post<ApiResponse<LoginResponse>>('/v1/backoffice/auth/login', data);
 };

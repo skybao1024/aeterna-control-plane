@@ -97,11 +97,15 @@ class BackofficeAuthService(AuthBase):
             scope="backoffice",
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )
-        return {"access_token": access_token, "token_type": "bearer"}
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+        }
 
     async def logout(self, db: AsyncSession, refresh_token: str) -> None:
         """Admin logout"""
-        payload = AuthBase.verify_token(refresh_token, scope="backoffice")
+        payload = AuthBase.verify_token(refresh_token, scope="refresh")
         if not payload:
             return  # Ignore invalid token
 

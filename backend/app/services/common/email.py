@@ -175,12 +175,7 @@ class EmailService:
         """
         try:
             # Add default parameters
-            params = {
-                "img_host": (
-                    settings.AWS_ENDPOINT if hasattr(settings, "AWS_ENDPOINT") else ""
-                ),
-                **template_params,
-            }
+            params = {**template_params}
 
             # Render template
             template = jinja_env.get_template(template_name)
@@ -207,8 +202,11 @@ class EmailService:
         return await self.send_with_template(
             to_emails=email,
             template_name="auth/verification.html",
-            template_params={"first_name": first_name, "code": verification_code},
-            subject="Bienvenue chez Moriarty - Activez votre compte",
+            template_params={
+                "first_name": first_name,
+                "verification_code": verification_code,
+            },
+            subject="Verify your Aeterna email address",
         )
 
 

@@ -12,7 +12,7 @@ Never read, display, search, quote, summarize, or expose values from runtime or 
 - `.env.local` and `.env.production`
 - Any other environment file that may contain real credentials
 
-Do not use file-reading tools, `cat`, `grep`, `rg`, shell expansion, Compose configuration output, or diagnostic commands in a way that reveals those values. Never ask the user to paste secrets into the conversation.
+Never use file-reading tools, shell commands, Compose output, or diagnostics to inspect protected environment files or expose their values, and never ask the user to paste secrets into the conversation. This restriction does not limit normal reading or searching of source code, tests, documentation, or the safe configuration sources below.
 
 ### Safe Configuration Sources
 
@@ -60,11 +60,11 @@ Use the repository scripts for normal development:
 
 Do not start the application manually on the host with `python main.py`. Normal application and API testing must use the Docker environment so PostgreSQL, Redis, and background services match the deployed architecture. Docker images and Compose services may invoke `python main.py` internally.
 
-### Local Tooling
+### Tooling Policy
 
-- A local Python virtual environment is only for backend tests, linting, formatting, and diagnostic scripts outside Docker.
-- The backend virtual environment must live at `backend/venv`.
-- From the repository root, activate it with `source backend/venv/bin/activate` before any local Python command.
+- Do not create or use a local Python virtual environment for backend work.
+- Run all backend application commands, tests, linting, formatting, and diagnostics inside the Docker Compose backend service.
+- Start the development environment with `./deploy.sh dev` before running focused backend commands with `docker compose exec backend ...`.
 - Frontend package management must use `pnpm`, not npm or yarn.
 - Follow the Backend Rules and Frontend Rules sections below for language-specific checks.
 
@@ -202,7 +202,6 @@ Expected categories include:
 - Database: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`
 - Redis: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
 - JWT: `SECRET_KEY`, `ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES`
-- AWS: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_BUCKET_NAME`
 - Email: configured mail-server or Brevo variables
 - Celery: `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`
 - Flower: `FLOWER_USER`, `FLOWER_PASSWORD`, `FLOWER_PORT`
@@ -214,18 +213,16 @@ Use Docker from the repository root for normal backend work:
 - `./deploy.sh dev`
 - `./deploy.sh logs backend`
 - `./deploy.sh migrate`
+- `docker compose exec backend pytest`
+- `docker compose exec backend black --check .`
+- `docker compose exec backend isort --check-only .`
+- `docker compose exec backend flake8 .`
 - `docker compose exec backend alembic revision --autogenerate -m "migration_name"`
 - `docker compose exec backend alembic downgrade -1`
 - `docker compose logs -f celery-worker`
 - `docker compose logs -f celery-beat`
 
-For local Python tooling only:
-
-1. From the repository root, run `source backend/venv/bin/activate`.
-2. From inside `backend/`, run `source venv/bin/activate`.
-3. Run the relevant formatter, linter, type check, or pytest command after activation.
-
-Do not use the local virtual environment to start the application server.
+Do not run backend Python, `pip`, pytest, lint, formatting, or diagnostic commands directly on the host.
 
 ### Migrations, Tasks, and Operations
 
@@ -241,8 +238,7 @@ Do not use the local virtual environment to start the application server.
 - Put temporary backend development scripts, one-off diagnostics, and exploratory checks in `backend/shell/`; keep that directory out of version control.
 - Treat `backend/scripts/`, `backend/shell/`, and `backend/docs/` as backend-scoped paths, even when a command is launched from the repository root.
 - A backend script must document its required working directory, arguments, and execution environment. Do not assume it can run as a standalone repository-root script.
-- Run scripts that depend on backend packages, application imports, database access, Redis, or service configuration inside the backend container, for example `docker compose exec backend python scripts/<script_name>.py`.
-- Use the local `backend/venv` only for scripts explicitly designed for local execution; activate it first and never print credential values.
+- Run all backend scripts inside the backend container, for example `docker compose exec backend python scripts/<script_name>.py`.
 - Keep backend documentation under `backend/docs/` in purpose-specific subdirectories such as `api/`, `architecture/`, `business/`, `development/`, `deployment/`, and `security/`.
 - Do not create loose documents directly in `backend/docs/`; `backend/docs/README.md` is the index and must be updated when documentation is added, moved, or removed.
 - Check for an existing backend script or document before creating another one with overlapping responsibility.

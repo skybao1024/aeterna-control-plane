@@ -1,4 +1,4 @@
-name: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}
+name: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}
 
 x-backend-build: &backend-build
   context: ./backend
@@ -52,7 +52,7 @@ services:
       retries: 5
 
   backend:
-    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:${IMAGE_TAG:-local}
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:${IMAGE_TAG:-local}
     build: *backend-build
     restart: unless-stopped
     env_file:
@@ -81,7 +81,7 @@ services:
       start_period: 30s
 
   celery-worker:
-    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:${IMAGE_TAG:-local}
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:${IMAGE_TAG:-local}
     build: *backend-build
     restart: unless-stopped
     command: celery -A app.core.celery_app worker --loglevel=${CELERY_LOG_LEVEL:-info} -Q celery,scheduled_tasks
@@ -107,7 +107,7 @@ services:
       start_period: 15s
 
   celery-beat:
-    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:${IMAGE_TAG:-local}
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:${IMAGE_TAG:-local}
     build: *backend-build
     restart: unless-stopped
     command: celery -A app.core.celery_app beat --loglevel=${CELERY_LOG_LEVEL:-info} --schedule=/app/logs/celerybeat-schedule
@@ -133,14 +133,14 @@ services:
       start_period: 15s
 
   frontend:
-    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-frontend:${IMAGE_TAG:-local}
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-frontend:${IMAGE_TAG:-local}
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
         NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
         NGINX_IMAGE: ${NGINX_IMAGE:-nginx:alpine}
-        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     restart: unless-stopped
     environment:
@@ -159,7 +159,7 @@ services:
       start_period: 10s
 
   flower:
-    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:${IMAGE_TAG:-local}
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:${IMAGE_TAG:-local}
     build: *backend-build
     restart: unless-stopped
     command: celery -A app.core.celery_app flower --port=5555 --basic-auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-change-me}

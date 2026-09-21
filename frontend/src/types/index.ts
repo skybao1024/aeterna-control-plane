@@ -1,6 +1,4 @@
-// Type definitions example
-
-// User types
+// Shared user types
 export interface User {
   id?: number;
   email: string;
@@ -8,14 +6,14 @@ export interface User {
   avatar?: string | null;
 }
 
-// API response types
+// Shared API response types
 export interface ApiResponse<T = unknown> {
   code: number;
   message: string;
   data: T;
 }
 
-// Pagination types
+// Shared pagination types
 export interface PaginationParams {
   page: number;
   pageSize: number;

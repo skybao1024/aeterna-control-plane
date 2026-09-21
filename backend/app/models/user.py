@@ -1,14 +1,12 @@
 from passlib.context import CryptContext
-from sqlalchemy import (DECIMAL, JSON, TIMESTAMP, Boolean, Column, DateTime,
-                        ForeignKey, Integer, String, Table)
-from sqlalchemy.orm import relationship
+from sqlalchemy import TIMESTAMP, Boolean, Column, Integer, String
 from sqlalchemy.sql import func
 
 from app.db.base import Base
 
 from .base import BaseModel
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
 
 
 class User(BaseModel):
@@ -24,10 +22,6 @@ class User(BaseModel):
     is_active = Column(Boolean, default=False)
     is_verified = Column(Boolean, default=False)
     last_active_at = Column(TIMESTAMP(timezone=True), nullable=True, default=func.now())
-
-    # Google OAuth fields
-    google_id = Column(String(255), unique=True, nullable=True, index=True)
-    auth_provider = Column(String(50), default="email")  # "email" | "google"
 
     @staticmethod
     def get_password_hash(password: str) -> str:

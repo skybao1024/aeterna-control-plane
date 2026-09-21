@@ -85,7 +85,7 @@ def create_app():
     app = FastAPI(
         lifespan=lifespan,
         title=settings.PROJECT_NAME,
-        description="FastAPI Template - Unified Entry",
+        description="Aeterna hosted control-plane API",
         version="1.0.0",
         docs_url=None,  # Disable default docs
         redoc_url=None,  # Disable default ReDoc
@@ -125,7 +125,7 @@ def create_app():
             Development environment Swagger documentation navigation
             """
             return {
-                "message": "FastAPI Template - Development Environment",
+                "message": "Aeterna Control Plane - Development Environment",
                 "environment": settings.ENV,
                 "documentation": {
                     "client_api": {
@@ -173,8 +173,13 @@ def create_app():
     @app.exception_handler(APIException)
     async def api_exception_handler(request: Request, exc: APIException):
         logger.error(
-            f"API Exception: {exc.status_code} - {exc.code} - {exc.detail}",
-            extra={"request": f"{request.method} {request.url}"},
+            "API request failed",
+            extra={
+                "request_method": request.method,
+                "request_path": request.url.path,
+                "status_code": exc.status_code,
+                "error_code": exc.code,
+            },
         )
         return ApiResponse.failed(
             message=exc.detail,
@@ -186,8 +191,12 @@ def create_app():
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
         logger.error(
-            f"HTTP Exception: {exc.status_code} - {exc.detail}",
-            extra={"request": f"{request.method} {request.url}"},
+            "HTTP request failed",
+            extra={
+                "request_method": request.method,
+                "request_path": request.url.path,
+                "status_code": exc.status_code,
+            },
         )
         return ApiResponse.failed(
             message=exc.detail,
@@ -200,9 +209,20 @@ def create_app():
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
     ):
+        validation_summary = [
+            {
+                "field": ".".join(str(loc) for loc in error.get("loc", [])),
+                "type": error.get("type", "unknown"),
+            }
+            for error in exc.errors()
+        ]
         logger.warning(
-            f"Validation Error: {exc.errors()}",
-            extra={"request": f"{request.method} {request.url}"},
+            "Request validation failed",
+            extra={
+                "request_method": request.method,
+                "request_path": request.url.path,
+                "validation_errors": validation_summary,
+            },
         )
         return ApiResponse.failed(
             message="Validation error",

@@ -3,6 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, validator
 
+from app.core.config import settings
 from app.schemas.client.user import UserResponse
 
 # ==================== Registration ====================
@@ -69,13 +70,16 @@ class VerifyEmail(BaseModel):
 
     email: EmailStr = Field(..., description="Email address")
     code: str = Field(
-        ..., min_length=4, max_length=4, description="4-digit verification code"
+        ...,
+        min_length=settings.VERIFICATION_CODE_LENGTH,
+        max_length=settings.VERIFICATION_CODE_LENGTH,
+        description="Numeric email verification code",
     )
 
     @validator("code")
     def validate_code_format(cls, v):
         if not v.isdigit():
-            raise ValueError("Verification code must be a 4-digit number")
+            raise ValueError("Verification code must contain digits only")
         return v
 
 
@@ -93,12 +97,6 @@ class Login(BaseModel):
 
     email: EmailStr = Field(..., description="Email address")
     password: str = Field(..., description="Password")
-
-
-class GoogleLogin(BaseModel):
-    """Google SSO login request"""
-
-    id_token: str = Field(..., description="Google ID Token")
 
 
 class Token(BaseModel):
@@ -125,7 +123,7 @@ class ResendVerificationResponse(BaseModel):
     """Resend verification code response"""
 
     message: str = "Verification code has been sent"
-    cooldown_seconds: int = 60
+    cooldown_seconds: int = settings.VERIFICATION_CODE_COOLDOWN_SECONDS
 
 
 class RefreshToken(BaseModel):

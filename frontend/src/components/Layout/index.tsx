@@ -10,7 +10,7 @@ const Layout: FC<LayoutProps> = () => {
   return (
     <div className={styles.layout}>
       <aside className={styles.sidebar}>
-        <div className={styles.logo}>Logo</div>
+        <div className={styles.logo}>Aeterna</div>
         <nav className={styles.nav}>
           <a href="/dashboard">Dashboard</a>
         </nav>

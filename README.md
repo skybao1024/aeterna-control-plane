@@ -1,102 +1,92 @@
-# Sprint Flow Demo Starter
+# Aeterna Control Plane
 
-A Docker-first starter for a React/Vite frontend and a FastAPI backend. The root Compose configuration is the canonical way to run the project and includes PostgreSQL, Redis, Celery, and optional Flower monitoring.
+Private hosted-service repository for Aeterna. The control plane coordinates
+accounts, registered devices, activity heartbeats, inactivity policies,
+notifications, and delayed release of server-held recovery material.
 
-The repository intentionally contains framework scaffolding only. Add product-specific routes, models, jobs, and pages inside the existing backend and frontend structures.
+The open-source desktop client is maintained separately. This repository is not
+the vault and must never receive vault content, messages, media, attachments,
+master passwords, emergency recovery codes, or vault data keys.
+
+## Current status
+
+The repository is a cleaned application foundation, not a production-ready
+control plane. It currently provides Docker orchestration, FastAPI, PostgreSQL,
+Redis, Celery, email adapters, migrations, client authentication scaffolding,
+and an authenticated backoffice shell. Aeterna domain modules still need to be
+implemented and security-reviewed.
 
 ## Quick start
 
-Requirements: Docker Desktop (or Docker Engine) with Docker Compose v2.
+Docker Desktop or Docker Engine with Compose v2 is required.
 
 ```bash
 ./deploy.sh init
 ./deploy.sh dev
 ```
 
-The default development endpoints are:
+Development endpoints:
 
-- Frontend: <http://localhost:3000>
-- Backend API: <http://localhost:8001>
+- Backoffice UI: <http://localhost:3000>
+- API: <http://localhost:8001>
 - Client API docs: <http://localhost:8001/client/docs>
+- Backoffice API docs: <http://localhost:8001/backoffice/docs>
 - Health check: <http://localhost:8001/api/v1/config/health>
-- PostgreSQL (development only): `localhost:5436`
-- Redis (development only): `localhost:6386`
 
-The development profile mounts both source directories into their containers. Vite and Uvicorn reload changes automatically.
-
-## Commands
+## Common commands
 
 ```bash
-./deploy.sh dev                 # Development images and hot reload
-./deploy.sh prod                # Production images and Nginx frontend
-./deploy.sh stop                # Keep database and Redis volumes
+./deploy.sh dev
+./deploy.sh prod
+./deploy.sh stop
 ./deploy.sh restart dev
 ./deploy.sh logs backend
 ./deploy.sh status
 ./deploy.sh migrate
-./deploy.sh mcp-setup             # Provision the AI read-only PostgreSQL role
-./deploy.sh monitoring          # Flower at http://localhost:5556 by default
+./deploy.sh mcp-setup
+./deploy.sh monitoring
 ./verify-setup.sh dev
 ./verify-setup.sh prod
 ```
 
-Equivalent raw Compose commands:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-```
+Do not run the backend directly on the host. Backend commands, tests, formatting,
+and migrations run in the Docker Compose backend service. Frontend package
+management uses `pnpm`.
 
 ## Configuration
 
-`./deploy.sh init` copies `.env.example` to the ignored root `.env` file. Compose passes that environment to the backend, workers, and infrastructure services. Frontend browser requests use `/api`; Vite in development and Nginx in production proxy that path to the backend container.
+`./deploy.sh init` copies the root `.env.example` to the ignored root `.env`.
+Replace every example credential before any non-local deployment. Production
+must use TLS, restricted origins, isolated environments, and managed secrets.
 
-Before a real deployment, replace the example PostgreSQL, Redis, Flower, and application secret values, set the public `FRONTEND_URL`, and place the stack behind a TLS reverse proxy. Ports bind to `127.0.0.1` by default; change `BIND_ADDRESS` only when remote access is intentional.
+Runtime environment files are confidential. Never commit them or paste their
+values into issues, logs, or AI conversations.
 
-Persistent data is held in named Docker volumes. `./deploy.sh stop` does not delete those volumes.
+## Architecture and boundaries
 
-## Project structure
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for service boundaries and the intended
+domain layout. Backend documentation is indexed at
+[`backend/docs/README.md`](./backend/docs/README.md).
 
-```text
-.
-├── backend/                 # FastAPI, SQLAlchemy, Alembic, and Celery
-├── frontend/                # React, TypeScript, and Vite
-├── docker-compose.yml       # Shared service topology
-├── docker-compose.dev.yml   # Development builds, mounts, and exposed ports
-├── docker-compose.prod.yml  # Production runtime ports and environment
-├── deploy.sh                # Lifecycle commands
-└── verify-setup.sh          # Static setup validation
-```
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for service boundaries and extension guidance.
-
-For AI-assisted database inspection, the trusted project config includes a
-read-only PostgreSQL MCP server. After starting development, run
-`./deploy.sh mcp-setup`, restart the Codex project, and see
-[`backend/docs/development/postgresql-mcp.md`](./backend/docs/development/postgresql-mcp.md)
-for tools and safeguards.
+The authoritative product and cryptographic design remains in the desktop
+client repository. Control-plane changes that affect protocols, recovery,
+retention, or the data boundary must update that design and receive an explicit
+security review.
 
 ## Database migrations
 
-Migrations run automatically after `./deploy.sh dev` or `./deploy.sh prod`. Run them manually with:
+Migrations run during deployment. Create new migrations inside the running
+backend container:
 
 ```bash
+docker compose exec backend alembic revision --autogenerate -m "describe_change"
 ./deploy.sh migrate
 ```
 
-Create a migration inside the running backend container:
+Do not rewrite migrations that may already have been applied.
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec backend \
-  alembic revision --autogenerate -m "describe_change"
-```
+## Repository status
 
-## Monitoring
-
-Flower is isolated behind the `monitoring` profile:
-
-```bash
-./deploy.sh monitoring
-```
-
-Set non-default `FLOWER_USER` and `FLOWER_PASSWORD` values before using it outside local development.
+This service repository is private and has no open-source license. Do not copy
+the desktop client's license or describe the hosted control plane as open
+source.

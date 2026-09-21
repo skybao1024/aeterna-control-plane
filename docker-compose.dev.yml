@@ -8,7 +8,7 @@ services:
       - "${BIND_ADDRESS:-127.0.0.1}:${REDIS_EXTERNAL_PORT:-6386}:6379"
 
   backend:
-    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:dev
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:dev
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
@@ -28,7 +28,7 @@ services:
     command: python main.py
 
   celery-worker:
-    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:dev
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:dev
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
@@ -45,7 +45,7 @@ services:
       - backend-logs:/app/logs
 
   celery-beat:
-    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:dev
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:dev
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
@@ -62,13 +62,13 @@ services:
       - backend-logs:/app/logs
 
   frontend:
-    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-frontend:dev
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-frontend:dev
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
       args:
         NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
-        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
     environment:
       VITE_API_BASE_URL: /api
       API_PROXY_TARGET: http://backend:${API_PORT:-8001}
@@ -86,7 +86,7 @@ services:
       start_period: 20s
 
   flower:
-    image: ${COMPOSE_PROJECT_NAME:-sprint-flow-demo}-backend:dev
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:dev
     build:
       context: ./backend
       dockerfile: Dockerfile.dev

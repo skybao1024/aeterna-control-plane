@@ -3,9 +3,7 @@ OpenAPI JSON export routes
 Provide standalone API documentation JSON download functionality for importing to other API management tools
 """
 
-import json
-
-from fastapi import APIRouter, Response
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from app.configs.docs_apps import create_backoffice_app, create_client_app
@@ -63,17 +61,16 @@ async def api_docs_info():
     API documentation export functionality guide
     """
     return {
-        "message": "FastAPI Template - API Documentation Export",
-        "description": "Provide OpenAPI JSON format API documentation for importing to various API management tools",
+        "message": "Aeterna Control Plane - API Documentation Export",
+        "description": "OpenAPI JSON documents for the desktop client and internal backoffice APIs",
         "downloads": {
             "client": {
                 "url": "/api-docs/client.json",
-                "description": "Client API documentation (no authentication, includes AWS features)",
+                "description": "Desktop client API documentation",
                 "filename": "client-api.json",
                 "features": [
-                    "Demo endpoints",
-                    "Configuration management",
-                    "AWS S3 upload",
+                    "Account authentication",
+                    "Health and safe client configuration",
                 ],
             },
             "backoffice": {
@@ -83,8 +80,6 @@ async def api_docs_info():
                 "features": [
                     "Authentication management",
                     "Admin management",
-                    "AWS management",
-                    "Permission control",
                 ],
             },
         },
@@ -96,7 +91,7 @@ async def api_docs_info():
             "apifox": "In Apifox, select Import > From URL/File > OpenAPI format",
         },
         "authentication": {
-            "client": "Client API requires no authentication, use directly",
+            "client": "Authentication requirements are defined per endpoint",
             "backoffice": "Backoffice API requires JWT authentication, configure Bearer Token authentication in tool after import",
         },
         "technical_info": {

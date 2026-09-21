@@ -1,5 +1,4 @@
-# Dockerfile for Development Environment (China)
-# Uses Tsinghua University mirror for faster pip installation
+# Dockerfile for the development environment
 
 # Use the configured Python slim image as base image
 ARG PYTHON_IMAGE=python:3.14.5-slim
@@ -13,9 +12,6 @@ ENV PYTHONPATH=/app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Configure APT to use Tsinghua mirror for faster downloads in China
-RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources
-
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
@@ -23,10 +19,6 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
-
-# Configure pip to use Tsinghua mirror for faster downloads in China
-RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn
 
 # Copy requirements file and install Python dependencies
 # Using BuildKit cache mount to cache pip downloads

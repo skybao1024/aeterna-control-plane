@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "基于 Vite + React + TypeScript 的项目模板",
+  "description": "Internal operations interface for the Aeterna control plane",
   "scripts": {
     "dev": "vite --mode dev --open",
     "build": "tsc --noEmit && vite build --mode prod",

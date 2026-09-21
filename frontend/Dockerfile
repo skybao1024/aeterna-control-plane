@@ -1,6 +1,6 @@
 ARG NODE_IMAGE=node:20-alpine
 ARG NGINX_IMAGE=nginx:alpine
-ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG NPM_REGISTRY=https://registry.npmjs.org
 
 FROM ${NODE_IMAGE} AS builder
 
@@ -17,7 +17,7 @@ RUN npm config set registry "${NPM_REGISTRY}" \
     && pnpm config set store-dir "${PNPM_STORE_DIR}"
 
 COPY package.json pnpm-lock.yaml ./
-RUN --mount=type=cache,id=sprint-flow-demo-frontend-pnpm,target=/pnpm/store \
+RUN --mount=type=cache,id=aeterna-control-plane-frontend-pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --prefer-offline
 
 COPY . .
