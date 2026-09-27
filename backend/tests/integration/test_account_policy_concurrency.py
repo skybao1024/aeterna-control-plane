@@ -12,13 +12,22 @@ from sqlalchemy import delete, func, select
 from app.db.base import get_session_local
 from app.models.account_policy import (
     AccountPolicy,
+    AccountPolicyOutboxAttempt,
+    AccountPolicyOutboxCallback,
     AccountPolicyOutboxEvent,
     AccountPolicyState,
+)
+from app.models.aeterna_identity import AeternaAccount
+from app.services.internal.account_policy_outbox import (
+    AccountPolicyOutboxService,
+    OutboxCallbackOutcome,
+    OutboxPreparationOutcome,
 )
 from app.services.internal.account_policy_transition import (
     AccountPolicyTransitionHooks,
     AccountPolicyTransitionService,
     InvalidAccountPolicyTransitionError,
+    InvalidServerTimeError,
     TransitionOutcome,
 )
 
@@ -101,12 +110,18 @@ class FailingTransitionHooks(AccountPolicyTransitionHooks):
 async def clean_policy_tables():
     session_factory = get_session_local()
     async with session_factory.begin() as db:
+        await db.execute(delete(AccountPolicyOutboxCallback))
+        await db.execute(delete(AccountPolicyOutboxAttempt))
         await db.execute(delete(AccountPolicyOutboxEvent))
         await db.execute(delete(AccountPolicy))
+        await db.execute(delete(AeternaAccount))
     yield
     async with session_factory.begin() as db:
+        await db.execute(delete(AccountPolicyOutboxCallback))
+        await db.execute(delete(AccountPolicyOutboxAttempt))
         await db.execute(delete(AccountPolicyOutboxEvent))
         await db.execute(delete(AccountPolicy))
+        await db.execute(delete(AeternaAccount))
 
 
 async def create_policy(
@@ -117,6 +132,7 @@ async def create_policy(
     warning_started_at: datetime | None = None,
     owner_warning_proven_at: datetime | None = None,
     grace_started_at: datetime | None = None,
+    account_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
     policy_id = uuid.uuid4()
     last_activity_at = now - timedelta(seconds=INACTIVITY_SECONDS)
@@ -125,6 +141,7 @@ async def create_policy(
         db.add(
             AccountPolicy(
                 id=policy_id,
+                account_id=account_id,
                 state=state.value,
                 version=0,
                 inactivity_window_seconds=INACTIVITY_SECONDS,
@@ -140,6 +157,24 @@ async def create_policy(
             )
         )
     return policy_id
+
+
+async def create_account(now: datetime) -> uuid.UUID:
+    account_id = uuid.uuid4()
+    session_factory = get_session_local()
+    async with session_factory.begin() as db:
+        db.add(
+            AeternaAccount(
+                id=account_id,
+                email_lookup=uuid.uuid4().bytes + uuid.uuid4().bytes,
+                email_ciphertext=b"synthetic-ciphertext",
+                email_nonce=bytes([0x32]) * 12,
+                email_key_version=1,
+                first_device_bound_at=now,
+                is_active=True,
+            )
+        )
+    return account_id
 
 
 async def load_policy(policy_id: uuid.UUID) -> AccountPolicy:
@@ -231,9 +266,11 @@ async def test_heartbeat_atomically_cancels_warning_or_grace(initial_state):
 async def test_release_wins_race_and_heartbeat_cannot_reverse_it():
     now = datetime(2026, 9, 21, 12, tzinfo=UTC)
     grace_started_at = now - timedelta(seconds=GRACE_SECONDS)
+    account_id = await create_account(now)
     policy_id = await create_policy(
         state=AccountPolicyState.GRACE_PERIOD,
         now=grace_started_at,
+        account_id=account_id,
         due_at=grace_started_at,
         warning_started_at=grace_started_at,
         owner_warning_proven_at=grace_started_at,
@@ -270,9 +307,11 @@ async def test_release_wins_race_and_heartbeat_cannot_reverse_it():
 async def test_heartbeat_wins_race_and_makes_release_ineligible():
     now = datetime(2026, 9, 21, 12, tzinfo=UTC)
     grace_started_at = now - timedelta(seconds=GRACE_SECONDS)
+    account_id = await create_account(now)
     policy_id = await create_policy(
         state=AccountPolicyState.GRACE_PERIOD,
         now=grace_started_at,
+        account_id=account_id,
         due_at=grace_started_at,
         warning_started_at=grace_started_at,
         owner_warning_proven_at=grace_started_at,
@@ -519,3 +558,234 @@ async def test_outbox_idempotency_key_has_database_unique_enforcement():
     assert first.outcome is TransitionOutcome.APPLIED
     assert duplicate.outcome is TransitionOutcome.DUPLICATE
     assert event_count == 1
+
+
+async def test_warning_and_grace_deadlines_are_inclusive_boundaries():
+    due_at = datetime(2026, 11, 1, 12, tzinfo=UTC)
+    warning_at = due_at - timedelta(seconds=WARNING_SECONDS)
+    clock = MutableUtcClock(warning_at - timedelta(microseconds=1))
+    policy_id = await create_policy(
+        state=AccountPolicyState.ACTIVE,
+        now=due_at - timedelta(seconds=INACTIVITY_SECONDS),
+        due_at=due_at,
+    )
+    service = AccountPolicyTransitionService(clock)
+
+    before_warning = await call_scheduler(service, policy_id, "before-warning")
+    clock.current = warning_at
+    at_warning = await call_scheduler(service, policy_id, "at-warning")
+    clock.current = due_at - timedelta(microseconds=1)
+    before_due = await call_scheduler(service, policy_id, "before-due")
+    clock.current = due_at
+    at_due = await call_scheduler(service, policy_id, "at-due")
+
+    assert before_warning.outcome is TransitionOutcome.NOOP
+    assert at_warning.state is AccountPolicyState.PRE_WARNING
+    assert before_due.outcome is TransitionOutcome.NOOP
+    assert at_due.state is AccountPolicyState.GRACE_PERIOD
+    events = await load_outbox_events(policy_id)
+    assert [event.notification_type for event in events] == [
+        "owner-pre-warning",
+        "owner-grace-period-started",
+    ]
+
+
+async def test_naive_server_time_fails_without_mutating_policy():
+    aware_now = datetime(2026, 9, 27, 12, tzinfo=UTC)
+    policy_id = await create_policy(
+        state=AccountPolicyState.ACTIVE,
+        now=aware_now,
+        due_at=aware_now,
+    )
+    service = AccountPolicyTransitionService(MutableUtcClock(datetime(2026, 9, 27, 12)))
+
+    with pytest.raises(InvalidServerTimeError, match="timezone-aware UTC"):
+        await call_scheduler(service, policy_id, "naive-clock")
+
+    policy = await load_policy(policy_id)
+    assert policy.state == AccountPolicyState.ACTIVE.value
+    assert policy.version == 0
+    assert await load_outbox_events(policy_id) == []
+
+
+async def test_queued_warning_is_cancelled_by_heartbeat_in_same_transaction():
+    now = datetime(2026, 9, 27, 12, tzinfo=UTC)
+    policy_id = await create_policy(
+        state=AccountPolicyState.ACTIVE,
+        now=now - timedelta(days=30),
+        due_at=now + timedelta(seconds=WARNING_SECONDS),
+    )
+    clock = MutableUtcClock(now)
+    transition_service = AccountPolicyTransitionService(clock)
+    warning = await call_scheduler(
+        transition_service, policy_id, "queue-then-heartbeat-warning"
+    )
+    outbox_service = AccountPolicyOutboxService(clock)
+    session_factory = get_session_local()
+    async with session_factory() as db:
+        prepared = await outbox_service.prepare_delivery(
+            db, warning.outbox_event_id, "queue-attempt-1"
+        )
+    assert prepared.outcome is OutboxPreparationOutcome.PREPARED
+
+    heartbeat = await call_heartbeat(
+        transition_service, policy_id, "queue-cancelling-heartbeat"
+    )
+
+    events = await load_outbox_events(policy_id)
+    assert heartbeat.state is AccountPolicyState.ACTIVE
+    assert events[0].status == "cancelled"
+    assert events[0].cancelled_at == now
+    assert events[1].event_type == "account-policy-heartbeat-reset"
+
+
+async def test_disable_delete_and_terminal_commands_are_fail_closed():
+    now = datetime(2026, 9, 27, 12, tzinfo=UTC)
+    policy_id = await create_policy(
+        state=AccountPolicyState.ACTIVE,
+        now=now - timedelta(days=30),
+        due_at=now + timedelta(seconds=WARNING_SECONDS),
+    )
+    service = AccountPolicyTransitionService(MutableUtcClock(now))
+    await call_scheduler(service, policy_id, "terminal-pre-warning")
+    session_factory = get_session_local()
+
+    async with session_factory() as db:
+        disabled = await service.disable_policy(db, policy_id, "disable-1")
+    heartbeat = await call_heartbeat(service, policy_id, "disabled-heartbeat")
+    scheduler = await call_scheduler(service, policy_id, "disabled-scheduler")
+    async with session_factory() as db:
+        repeated_disable = await service.disable_policy(db, policy_id, "disable-2")
+    async with session_factory() as db:
+        deleted = await service.delete_policy(db, policy_id, "delete-1")
+    async with session_factory() as db:
+        repeated_delete = await service.delete_policy(db, policy_id, "delete-1")
+
+    assert disabled.state is AccountPolicyState.DISABLED
+    assert heartbeat.outcome is TransitionOutcome.TERMINAL_REJECTED
+    assert scheduler.outcome is TransitionOutcome.NOOP
+    assert repeated_disable.outcome is TransitionOutcome.NOOP
+    assert deleted.state is AccountPolicyState.DELETED
+    assert repeated_delete.outcome is TransitionOutcome.DUPLICATE
+    policy = await load_policy(policy_id)
+    assert policy.state == AccountPolicyState.DELETED.value
+    events = await load_outbox_events(policy_id)
+    assert events[0].status == "cancelled"
+    assert [event.event_type for event in events[1:]] == [
+        "account-policy-disabled",
+        "account-policy-deleted",
+    ]
+
+
+async def test_released_policy_cannot_be_disabled_deleted_or_reactivated():
+    now = datetime(2026, 9, 27, 12, tzinfo=UTC)
+    policy_id = await create_policy(
+        state=AccountPolicyState.RELEASED,
+        now=now,
+    )
+    service = AccountPolicyTransitionService(MutableUtcClock(now))
+    session_factory = get_session_local()
+
+    heartbeat = await call_heartbeat(service, policy_id, "released-heartbeat")
+    async with session_factory() as db:
+        disabled = await service.disable_policy(db, policy_id, "released-disable")
+    async with session_factory() as db:
+        deleted = await service.delete_policy(db, policy_id, "released-delete")
+
+    assert heartbeat.outcome is TransitionOutcome.RELEASED_REJECTED
+    assert disabled.outcome is TransitionOutcome.RELEASED_REJECTED
+    assert deleted.outcome is TransitionOutcome.RELEASED_REJECTED
+    policy = await load_policy(policy_id)
+    assert policy.state == AccountPolicyState.RELEASED.value
+    assert policy.version == 0
+    assert await load_outbox_events(policy_id) == []
+
+
+async def test_outbox_retries_and_callbacks_keep_stable_delivery_key():
+    now = datetime(2026, 9, 27, 12, tzinfo=UTC)
+    policy_id = await create_policy(
+        state=AccountPolicyState.ACTIVE,
+        now=now - timedelta(days=30),
+        due_at=now + timedelta(seconds=WARNING_SECONDS),
+    )
+    clock = MutableUtcClock(now)
+    transition_service = AccountPolicyTransitionService(clock)
+    warning = await call_scheduler(transition_service, policy_id, "outbox-warning")
+    outbox_service = AccountPolicyOutboxService(clock)
+    session_factory = get_session_local()
+
+    async with session_factory() as db:
+        first = await outbox_service.prepare_delivery(
+            db, warning.outbox_event_id, "celery-attempt-1"
+        )
+    async with session_factory() as db:
+        duplicate_attempt = await outbox_service.prepare_delivery(
+            db, warning.outbox_event_id, "celery-attempt-1"
+        )
+    async with session_factory() as db:
+        accepted = await outbox_service.record_callback(
+            db,
+            warning.outbox_event_id,
+            "callback-1",
+            OutboxCallbackOutcome.DISPATCH_ACCEPTED,
+        )
+    async with session_factory() as db:
+        duplicate_callback = await outbox_service.record_callback(
+            db,
+            warning.outbox_event_id,
+            "callback-1",
+            OutboxCallbackOutcome.DISPATCH_ACCEPTED,
+        )
+    async with session_factory() as db:
+        with pytest.raises(InvalidAccountPolicyTransitionError, match="conflicts"):
+            await outbox_service.record_callback(
+                db,
+                warning.outbox_event_id,
+                "callback-1",
+                OutboxCallbackOutcome.DISPATCH_FAILED,
+            )
+    async with session_factory() as db:
+        failed = await outbox_service.record_callback(
+            db,
+            warning.outbox_event_id,
+            "callback-2",
+            OutboxCallbackOutcome.DISPATCH_FAILED,
+        )
+    async with session_factory() as db:
+        retry = await outbox_service.prepare_delivery(
+            db, warning.outbox_event_id, "celery-attempt-2"
+        )
+
+    assert first.outcome is OutboxPreparationOutcome.PREPARED
+    assert duplicate_attempt.outcome is OutboxPreparationOutcome.DUPLICATE
+    assert accepted.outbox_status == "acknowledged"
+    assert duplicate_callback.duplicate is True
+    assert failed.outbox_status == "pending"
+    assert retry.attempt_number == 2
+    assert retry.delivery_idempotency_key == first.delivery_idempotency_key
+
+    async with session_factory() as db:
+        policy = await db.get(AccountPolicy, policy_id)
+        attempts = list(
+            (
+                await db.execute(
+                    select(AccountPolicyOutboxAttempt).where(
+                        AccountPolicyOutboxAttempt.outbox_event_id
+                        == warning.outbox_event_id
+                    )
+                )
+            ).scalars()
+        )
+        callbacks = list(
+            (
+                await db.execute(
+                    select(AccountPolicyOutboxCallback).where(
+                        AccountPolicyOutboxCallback.outbox_event_id
+                        == warning.outbox_event_id
+                    )
+                )
+            ).scalars()
+        )
+    assert policy.owner_warning_proven_at is None
+    assert len(attempts) == 2
+    assert len(callbacks) == 2

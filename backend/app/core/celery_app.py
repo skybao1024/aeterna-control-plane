@@ -9,12 +9,21 @@ celery_app = Celery(
     "aeterna_control_plane",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=[],
+    include=["app.schedule.jobs.account_policy"],
 )
 
-# Schedules are added alongside their production task implementations. Keeping
-# this empty prevents template jobs from running in a deployed environment.
-celery_app.conf.beat_schedule = {}
+celery_app.conf.beat_schedule = {
+    "scan-account-policies": {
+        "task": "app.schedule.jobs.account_policy.scan",
+        "schedule": 60.0,
+        "options": {"queue": "scheduled_tasks"},
+    },
+    "prepare-account-policy-notifications": {
+        "task": "app.schedule.jobs.account_policy.prepare_notifications",
+        "schedule": 60.0,
+        "options": {"queue": "scheduled_tasks"},
+    },
+}
 
 celery_app.conf.timezone = "UTC"
 celery_app.conf.task_queues = {

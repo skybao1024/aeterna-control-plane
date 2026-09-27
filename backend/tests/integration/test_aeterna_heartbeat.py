@@ -11,10 +11,11 @@ import pytest_asyncio
 import rfc8785
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 
 from app.db.base import get_session_local
 from app.exceptions.aeterna_protocol import AeternaProtocolException
+from app.models.account_policy import AccountPolicy, AccountPolicyOutboxEvent
 from app.models.aeterna_identity import (
     AeternaAccount,
     AeternaAccountChallenge,
@@ -29,6 +30,10 @@ from app.schemas.client.aeterna_protocol import (
     HeartbeatRequest,
 )
 from app.services.client.aeterna_heartbeat import AeternaHeartbeatService
+from app.services.internal.account_policy_transition import (
+    AccountPolicyTransitionHooks,
+    AccountPolicyTransitionService,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -111,6 +116,11 @@ class MutableClock:
 
     def advance(self, delta: timedelta) -> None:
         self.current += delta
+
+
+class FailingPolicyOutboxHooks(AccountPolicyTransitionHooks):
+    async def after_outbox_write(self, operation, event) -> None:
+        raise RuntimeError("Injected policy Outbox failure")
 
 
 async def clear_identity_tables() -> None:
@@ -208,10 +218,22 @@ async def test_exact_retry_sequence_cooldown_and_server_receipt_time():
         second = await service.submit_heartbeat(db, early, early_document)
         account = await db.get(AeternaAccount, account_id)
         device = await db.get(AeternaDevice, device_ids[0])
+        policy = await db.scalar(
+            select(AccountPolicy).where(AccountPolicy.account_id == account_id)
+        )
+        outbox_count = await db.scalar(
+            select(func.count(AccountPolicyOutboxEvent.id)).where(
+                AccountPolicyOutboxEvent.account_policy_id == policy.id
+            )
+        )
     assert second["accepted_at"] == "2030-01-01T00:30:00Z"
     assert account.last_activity_at == clock.current
     assert device.last_sequence == 2
     assert device.last_seen_at == clock.current
+    assert policy.last_activity_at == clock.current
+    assert policy.due_at == clock.current + timedelta(days=30)
+    assert policy.version == 2
+    assert outbox_count == 2
 
 
 async def test_modified_wrong_key_and_request_id_conflict_fail_closed():
@@ -355,3 +377,36 @@ async def test_lost_revoked_and_dormant_devices_cannot_extend_activity():
     assert device.status == "dormant"
     assert device.last_sequence == 0
     assert account.last_activity_at is None
+
+
+async def test_heartbeat_device_policy_and_outbox_roll_back_together():
+    now, account_id, device_ids, keys = await seed_account(1)
+    policy_service = AccountPolicyTransitionService(hooks=FailingPolicyOutboxHooks())
+    service = AeternaHeartbeatService(
+        clock=lambda: now,
+        policy_service=policy_service,
+    )
+    payload, document = heartbeat_document(
+        account_id, device_ids[0], keys[0], sequence=1
+    )
+    session_factory = get_session_local()
+
+    async with session_factory() as db:
+        with pytest.raises(RuntimeError, match="Injected policy Outbox failure"):
+            await service.submit_heartbeat(db, payload, document)
+
+    async with session_factory() as db:
+        account = await db.get(AeternaAccount, account_id)
+        device = await db.get(AeternaDevice, device_ids[0])
+        policy_count = await db.scalar(
+            select(func.count(AccountPolicy.id)).where(
+                AccountPolicy.account_id == account_id
+            )
+        )
+        outbox_count = await db.scalar(select(func.count(AccountPolicyOutboxEvent.id)))
+
+    assert account.last_activity_at is None
+    assert device.last_sequence == 0
+    assert device.last_seen_at is None
+    assert policy_count == 0
+    assert outbox_count == 0

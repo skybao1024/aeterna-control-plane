@@ -9,6 +9,7 @@ public client protocol.
 - [Project architecture](./architecture/project-architecture.md)
 - [Docker deployment](./architecture/docker-deployment.md)
 - [ADR 0001: Account-policy transaction and outage semantics](./architecture/adr/0001-account-policy-transaction-and-outage-semantics.md)
+- [ADR 0002: Warning, grace, and transactional Outbox state machine](./architecture/adr/0002-warning-grace-outbox-state-machine.md)
 
 ## API
 
@@ -19,6 +20,7 @@ public client protocol.
 - [Development workflow](./development/development-framework.md)
 - [Read-only PostgreSQL MCP](./development/postgresql-mcp.md)
 - [I03 concurrency prototype results](./development/i03-concurrency-prototype-results.md)
+- [I11 warning/grace state machine results](./development/i11-state-machine-results.md)
 
 ## Security
 

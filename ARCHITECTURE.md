@@ -108,6 +108,14 @@ services own authorization, business rules, transactions, and idempotency.
 - Release is irreversible from the recipient's perspective and must emit audit
   and owner-notification events in the same durable workflow.
 
+The I11 implementation binds one policy to an Aeterna account and serializes
+signed heartbeat and scheduler mutations in account-then-policy lock order.
+Its Celery jobs advance one persisted version at a time and prepare only
+provider-neutral notification intents. `queued` and `acknowledged` Outbox
+states are internal dispatch evidence, never proof that the Owner received a
+warning. See backend ADR 0002 for the closed transition graph, timing bounds,
+outage restart, and idempotency rules.
+
 ## Deployment
 
 The root Compose files are the only supported local topology:

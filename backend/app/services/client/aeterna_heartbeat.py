@@ -22,6 +22,11 @@ from app.schemas.client.aeterna_protocol import (
     HeartbeatRequest,
 )
 from app.services.common.aeterna_security import request_digest, verify_signature
+from app.services.internal.account_policy_transition import (
+    AccountPolicyTransitionService,
+    TransitionOutcome,
+    get_account_policy_transition_service,
+)
 
 HEARTBEAT_COOLDOWN = timedelta(minutes=30)
 DEVICE_DORMANCY = timedelta(days=90)
@@ -42,9 +47,11 @@ class AeternaHeartbeatService:
         self,
         clock: Callable[[], datetime] = utc_now,
         uuid_factory: Callable[[], uuid.UUID] = uuid.uuid4,
+        policy_service: AccountPolicyTransitionService | None = None,
     ):
         self.clock = clock
         self.uuid_factory = uuid_factory
+        self.policy_service = policy_service or AccountPolicyTransitionService()
 
     async def submit_heartbeat(
         self,
@@ -57,6 +64,9 @@ class AeternaHeartbeatService:
         account_id = uuid.UUID(signed.account_id)
         device_id = uuid.UUID(signed.device_id)
         account = await self._locked_account(db, account_id, request_id)
+        policy = await self.policy_service.lock_policy_for_account(
+            db, account_id, "heartbeat"
+        )
         device = await db.scalar(
             select(AeternaDevice)
             .where(
@@ -88,7 +98,7 @@ class AeternaHeartbeatService:
                 )
             return self._heartbeat_data(device, device.last_seen_at)
 
-        now = self.clock()
+        now = self.policy_service.normalize_time(self.clock())
         if device.status in {"lost", "revoked"}:
             raise AeternaProtocolException(403, "device.not_active", request_id)
         if device.status == "dormant":
@@ -117,6 +127,19 @@ class AeternaHeartbeatService:
                     request_id,
                     retry_after_seconds=min(retry, 86_400),
                 )
+
+        policy_result = await self.policy_service.record_locked_account_heartbeat(
+            db=db,
+            account_id=account_id,
+            policy=policy,
+            heartbeat_id=request_id,
+            received_at=now,
+        )
+        if policy_result.outcome in {
+            TransitionOutcome.RELEASED_REJECTED,
+            TransitionOutcome.TERMINAL_REJECTED,
+        }:
+            raise AeternaProtocolException(403, "device.not_active", request_id)
 
         device.last_sequence = signed.sequence
         device.last_seen_at = now
@@ -306,4 +329,6 @@ class AeternaHeartbeatService:
 
 
 def get_aeterna_heartbeat_service() -> AeternaHeartbeatService:
-    return AeternaHeartbeatService()
+    return AeternaHeartbeatService(
+        policy_service=get_account_policy_transition_service()
+    )
