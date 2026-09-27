@@ -23,6 +23,11 @@ celery_app.conf.beat_schedule = {
         "schedule": 60.0,
         "options": {"queue": "scheduled_tasks"},
     },
+    "dispatch-aeterna-email-notifications": {
+        "task": "app.schedule.jobs.account_policy.dispatch_email_notifications",
+        "schedule": 60.0,
+        "options": {"queue": "scheduled_tasks"},
+    },
 }
 
 celery_app.conf.timezone = "UTC"

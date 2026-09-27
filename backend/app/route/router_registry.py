@@ -20,6 +20,11 @@ class RouteConfig:
 # Client route configuration
 CLIENT_ROUTES = [
     RouteConfig(
+        module_path="app.api.client.v1.aeterna_notification",
+        prefix=f"{settings.API_V1_STR}",
+        tags=["contacts-email-notifications"],
+    ),
+    RouteConfig(
         module_path="app.api.client.v1.aeterna_heartbeat",
         prefix=f"{settings.API_V1_STR}",
         tags=["signed-heartbeat"],
@@ -52,6 +57,11 @@ BACKOFFICE_ROUTES = [
 
 # Common route configuration (routes that are not client or backoffice specific)
 COMMON_ROUTES = [
+    RouteConfig(
+        module_path="app.api.internal.v1.aeterna_email_events",
+        prefix="/api/internal/v1/email-events",
+        tags=["internal-email-events"],
+    ),
     RouteConfig(
         module_path="app.api.docs_export", prefix="", tags=["API Documentation Export"]
     ),

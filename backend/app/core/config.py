@@ -55,6 +55,15 @@ class Settings(BaseSettings):
     MAIL_FROM_NAME: str = "Aeterna"
     MAIL_ENCRYPTION: str = "none"
 
+    # Aeterna I12 production email boundary. Credentials are intentionally not
+    # configured here; AWS uses the standard IAM role/credential provider chain.
+    AETERNA_EMAIL_PROVIDER: str = "disabled"
+    AETERNA_EMAIL_PRODUCTION_ENABLED: bool = False
+    AWS_SES_REGION: str = ""
+    AWS_SES_FROM_ADDRESS: str = ""
+    AWS_SES_CONFIGURATION_SET: str = ""
+    AWS_SES_SNS_TOPIC_ARN: str = ""
+
     # Brevo configuration (alternative email provider)
     BREVO_API_KEY: str = ""
     BREVO_EMAIL_FROM: str = "noreply@example.com"

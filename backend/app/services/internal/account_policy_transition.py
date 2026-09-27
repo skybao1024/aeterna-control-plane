@@ -19,6 +19,7 @@ from app.models.account_policy import (
     AccountPolicyState,
 )
 from app.models.aeterna_identity import AeternaAccount
+from app.models.aeterna_notification import AeternaEmailOutboxEvent
 
 MIN_INACTIVITY_SECONDS = 14 * 24 * 60 * 60
 MAX_INACTIVITY_SECONDS = 365 * 24 * 60 * 60
@@ -572,14 +573,38 @@ class AccountPolicyTransitionService:
         policy_id: uuid.UUID,
         now: datetime,
     ) -> None:
+        cancelled_event_ids = list(
+            await db.scalars(
+                select(AccountPolicyOutboxEvent.id).where(
+                    AccountPolicyOutboxEvent.account_policy_id == policy_id,
+                    AccountPolicyOutboxEvent.notification_type.is_not(None),
+                    AccountPolicyOutboxEvent.status.in_(
+                        {"pending", "queued", "acknowledged"}
+                    ),
+                )
+            )
+        )
+        if not cancelled_event_ids:
+            return
         await db.execute(
             update(AccountPolicyOutboxEvent)
             .where(
-                AccountPolicyOutboxEvent.account_policy_id == policy_id,
-                AccountPolicyOutboxEvent.notification_type.is_not(None),
-                AccountPolicyOutboxEvent.status.in_(
-                    {"pending", "queued", "acknowledged"}
+                AccountPolicyOutboxEvent.id.in_(cancelled_event_ids),
+            )
+            .values(
+                status="cancelled",
+                cancelled_at=now,
+                updated_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        await db.execute(
+            update(AeternaEmailOutboxEvent)
+            .where(
+                AeternaEmailOutboxEvent.source_policy_outbox_id.in_(
+                    cancelled_event_ids
                 ),
+                AeternaEmailOutboxEvent.status.in_({"queued", "retry_pending"}),
             )
             .values(
                 status="cancelled",

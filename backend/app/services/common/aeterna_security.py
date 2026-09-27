@@ -151,6 +151,68 @@ def decrypt_email(
     return plaintext.decode("utf-8", errors="strict")
 
 
+def _private_text_aad(purpose: str, owner_id: uuid.UUID, key_version: int) -> bytes:
+    return f"aeterna:private-text:v1:{purpose}:{key_version}:{owner_id}".encode()
+
+
+def encrypt_private_text(
+    keys: AeternaIdentityKeys,
+    plaintext: str,
+    purpose: str,
+    owner_id: uuid.UUID,
+    nonce_factory: Callable[[int], bytes] = secrets.token_bytes,
+) -> tuple[bytes, bytes, int]:
+    """Encrypt a bounded text field under purpose-bound authenticated data."""
+
+    nonce = nonce_factory(12)
+    if len(nonce) != 12:
+        raise ValueError("The nonce source returned an invalid length")
+    ciphertext = AESGCM(keys.pii_key).encrypt(
+        nonce,
+        plaintext.encode("utf-8"),
+        _private_text_aad(purpose, owner_id, keys.version),
+    )
+    return ciphertext, nonce, keys.version
+
+
+def decrypt_private_text(
+    keys: AeternaIdentityKeys,
+    ciphertext: bytes,
+    nonce: bytes,
+    purpose: str,
+    owner_id: uuid.UUID,
+    key_version: int,
+) -> str:
+    """Decrypt a purpose-bound text field without logging its plaintext."""
+
+    if key_version != keys.version:
+        raise IdentityKeyUnavailable("The required identity key version is unavailable")
+    plaintext = AESGCM(keys.pii_key).decrypt(
+        nonce,
+        ciphertext,
+        _private_text_aad(purpose, owner_id, key_version),
+    )
+    return plaintext.decode("utf-8", errors="strict")
+
+
+def derive_invitation_token(
+    keys: AeternaIdentityKeys,
+    invitation_id: uuid.UUID,
+    key_version: int | None = None,
+) -> str:
+    """Derive a secret invitation token while storing only its verifier."""
+
+    selected_version = key_version or keys.version
+    if selected_version != keys.version:
+        raise IdentityKeyUnavailable("The required identity key version is unavailable")
+    raw = hmac.new(
+        keys.otp_key,
+        f"aeterna:contact-invitation:v1:{selected_version}:{invitation_id}".encode(),
+        hashlib.sha256,
+    ).digest()
+    return encode_base64url(raw)
+
+
 def otp_verifier(
     keys: AeternaIdentityKeys, challenge_id: uuid.UUID, purpose: str, code: str
 ) -> bytes:

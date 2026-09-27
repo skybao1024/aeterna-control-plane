@@ -44,7 +44,7 @@ FastAPI client API -------- PostgreSQL
        Celery worker and beat
                 |
                 v
-       Email/SMS provider adapters
+       Email provider adapter
 
 Operator browser -> Backoffice UI -> Backoffice API
 ```
@@ -115,6 +115,20 @@ provider-neutral notification intents. `queued` and `acknowledged` Outbox
 states are internal dispatch evidence, never proof that the Owner received a
 warning. See backend ADR 0002 for the closed transition graph, timing bounds,
 outage restart, and idempotency rules.
+
+I12 keeps an unverified Notification Target separate from an accepted and
+verified Recovery Contact. Confirm-now queues a fixed neutral invitation;
+private-until-release cannot materialize that invitation before `RELEASED`.
+Encrypted addresses and bounded message text remain outside Outbox and audit
+rows. I11 intents materialize into a second provider-neutral email Outbox whose
+`provider_accepted`, `delivered`, and `bounced` states describe transport only.
+They never set Owner warning proof or imply human reading. Automatic retry is
+permitted only through an adapter that honors the persisted idempotency key;
+ambiguous SMTP outcomes stop for reconciliation instead of risking a duplicate.
+AWS SES is the selected production adapter and signed SNS is the callback
+boundary. External delivery remains disabled until the Region, sender identity,
+operating jurisdictions, provider use-case acceptance, and live-send matrix are
+approved. See backend ADR 0003.
 
 ## Deployment
 

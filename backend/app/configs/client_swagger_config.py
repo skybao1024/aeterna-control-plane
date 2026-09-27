@@ -72,6 +72,13 @@ CLIENT_OPENAPI_TAGS = [
         "name": "account-device-identity",
         "description": "Passwordless mailbox verification and signed device binding",
     },
+    {
+        "name": "contacts-email-notifications",
+        "description": (
+            "Signed contact consent, bounded notification templates, and "
+            "transport-only email status"
+        ),
+    },
 ]
 
 

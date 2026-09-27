@@ -10,10 +10,15 @@ public client protocol.
 - [Docker deployment](./architecture/docker-deployment.md)
 - [ADR 0001: Account-policy transaction and outage semantics](./architecture/adr/0001-account-policy-transaction-and-outage-semantics.md)
 - [ADR 0002: Warning, grace, and transactional Outbox state machine](./architecture/adr/0002-warning-grace-outbox-state-machine.md)
+- [ADR 0003: Contact consent and email delivery boundary](./architecture/adr/0003-contact-consent-and-email-delivery-boundary.md)
 
 ## API
 
 - [OpenAPI and Swagger](./api/swagger-guide.md)
+
+## Deployment
+
+- [AWS SES production email boundary](./deployment/aws-ses.md)
 
 ## Development
 
@@ -21,10 +26,12 @@ public client protocol.
 - [Read-only PostgreSQL MCP](./development/postgresql-mcp.md)
 - [I03 concurrency prototype results](./development/i03-concurrency-prototype-results.md)
 - [I11 warning/grace state machine results](./development/i11-state-machine-results.md)
+- [I12 contacts and email notification results](./development/i12-notification-results.md)
 
 ## Security
 
 - [Secret handling and AI isolation](./security/ai-security-isolation.md)
+- [I12 email provider policy review](./security/i12-email-provider-policy-review.md)
 
 Documents from the original template are not architectural authority. If a
 document conflicts with the root `AGENTS.md`, `ARCHITECTURE.md`, or the desktop
