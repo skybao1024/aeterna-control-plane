@@ -19,6 +19,8 @@ The client account/device routes implement the public desktop protocol v1 at:
 - `POST /api/v1/device-bindings/{binding_id}/approvals`
 - `POST /api/v1/device-bindings/{binding_id}/delayed-confirmations`
 - `POST /api/v1/device-bindings/{binding_id}/cancellations`
+- `POST /api/v1/heartbeats`
+- `POST /api/v1/device-status-changes`
 
 These routes manually enforce the public transport boundary before Pydantic
 validation: exact JSON media type, a 16,384-byte limit, UTF-8 I-JSON, no BOM,
@@ -33,6 +35,12 @@ and cancellation grants use an opaque one-use token in the `Authorization:
 Bearer` header. Existing-device approval instead requires the registered
 device's Ed25519 signature. The legacy password/JWT client-auth router is not
 registered; backoffice authentication is unchanged.
+
+Heartbeat and device-status requests also use closed RFC 8785/Ed25519 signed
+documents under operation-specific domains. Heartbeats carry only account and
+device routing identifiers plus a monotonic sequence. Server receipt time owns
+cooldown, dormancy, and aggregation; no client timestamp or deadline is
+accepted.
 
 Documentation is not an authorization boundary. Every protected route must
 enforce its authentication and authorization dependency even when production

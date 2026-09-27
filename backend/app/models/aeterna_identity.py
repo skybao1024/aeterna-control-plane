@@ -5,14 +5,17 @@ import uuid
 from sqlalchemy import (
     JSON,
     TIMESTAMP,
+    BigInteger,
     Boolean,
     CheckConstraint,
     Column,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -45,11 +48,12 @@ class AeternaAccount(BaseModel):
     email_nonce = Column(LargeBinary, nullable=False)
     email_key_version = Column(Integer, nullable=False, default=1)
     first_device_bound_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    last_activity_at = Column(TIMESTAMP(timezone=True), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
 
 
 class AeternaDevice(BaseModel):
-    """An active public signing key bound to one Aeterna account."""
+    """A bound public signing key and its latest heartbeat eligibility state."""
 
     __tablename__ = "aeterna_devices"
     __table_args__ = (
@@ -61,8 +65,22 @@ class AeternaDevice(BaseModel):
             name="ck_aeterna_devices_public_key_length",
         ),
         CheckConstraint(
-            "status IN ('active', 'revoked')",
+            "status IN ('active', 'dormant', 'lost', 'revoked')",
             name="ck_aeterna_devices_status",
+        ),
+        CheckConstraint(
+            "last_sequence >= 0 AND last_sequence <= 9007199254740991",
+            name="ck_aeterna_devices_last_sequence_range",
+        ),
+        CheckConstraint(
+            "(last_heartbeat_request_id IS NULL) = "
+            "(last_heartbeat_request_digest IS NULL)",
+            name="ck_aeterna_devices_heartbeat_request_pair",
+        ),
+        CheckConstraint(
+            "last_heartbeat_request_digest IS NULL OR "
+            "octet_length(last_heartbeat_request_digest) = 32",
+            name="ck_aeterna_devices_heartbeat_digest_length",
         ),
     )
 
@@ -77,6 +95,11 @@ class AeternaDevice(BaseModel):
     label = Column(String(64), nullable=True)
     status = Column(String(16), nullable=False, default="active")
     bound_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    heartbeat_authorized_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    last_sequence = Column(BigInteger, nullable=False, default=0)
+    last_seen_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    last_heartbeat_request_id = Column(UUID(as_uuid=True), nullable=True)
+    last_heartbeat_request_digest = Column(LargeBinary, nullable=True)
     revoked_at = Column(TIMESTAMP(timezone=True), nullable=True)
 
 
@@ -85,10 +108,12 @@ class AeternaDeviceBinding(BaseModel):
 
     __tablename__ = "aeterna_device_bindings"
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_aeterna_device_bindings_pending_account_device",
             "account_id",
             "proposed_device_id",
-            name="uq_aeterna_device_bindings_account_device",
+            unique=True,
+            postgresql_where=text("state = 'pending'"),
         ),
         UniqueConstraint("request_id", name="uq_aeterna_device_bindings_request_id"),
         CheckConstraint(
@@ -286,7 +311,8 @@ class AeternaSecurityAudit(BaseModel):
     __table_args__ = (
         CheckConstraint(
             "event_type IN ('account.created', 'device.binding_requested', "
-            "'device.bound', 'device.binding_cancelled')",
+            "'device.bound', 'device.binding_cancelled', 'device.dormant', "
+            "'device.lost', 'device.revoked', 'device.reverified')",
             name="ck_aeterna_security_audit_event_type",
         ),
     )

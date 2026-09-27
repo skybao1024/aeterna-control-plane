@@ -14,6 +14,7 @@ Base64Url32 = Annotated[
 Base64Url64 = Annotated[
     str, Field(min_length=86, max_length=86, pattern=r"^[A-Za-z0-9_-]{86}$")
 ]
+HeartbeatSequence = Annotated[int, Field(strict=True, ge=1, le=9_007_199_254_740_991)]
 Timestamp = Annotated[str, Field(pattern=r"Z$")]
 ChallengePurpose = Literal[
     "account_onboarding",
@@ -139,6 +140,35 @@ class DeviceBindingCancellationRequest(ClosedModel):
         return self
 
 
+class HeartbeatSigned(SignedHeader):
+    account_id: UuidString
+    device_id: UuidString
+    domain: Literal["aeterna.heartbeat.submit.v1"]
+    operation: Literal["heartbeat.submit"]
+    sequence: HeartbeatSequence
+
+
+class HeartbeatRequest(ClosedModel):
+    protocol_version: Literal[1]
+    signed: HeartbeatSigned
+    signature: Base64Url64
+
+
+class DeviceStatusChangeSigned(SignedHeader):
+    account_id: UuidString
+    action: Literal["mark_lost", "revoke"]
+    authorizing_device_id: UuidString
+    domain: Literal["aeterna.device-status.change.v1"]
+    operation: Literal["device_status.change"]
+    target_device_id: UuidString
+
+
+class DeviceStatusChangeRequest(ClosedModel):
+    protocol_version: Literal[1]
+    signed: DeviceStatusChangeSigned
+    signature: Base64Url64
+
+
 class AccountChallengeData(ClosedModel):
     challenge_id: UuidString
     expires_in_seconds: Literal[600]
@@ -180,6 +210,33 @@ class DeviceBindingResponse(ClosedModel):
     protocol_version: Literal[1]
     request_id: UuidString
     data: DeviceBindingData
+
+
+class HeartbeatData(ClosedModel):
+    accepted_at: Timestamp
+    accepted_sequence: HeartbeatSequence
+    account_id: UuidString
+    device_id: UuidString
+    next_heartbeat_not_before: Timestamp
+
+
+class HeartbeatResponse(ClosedModel):
+    protocol_version: Literal[1]
+    request_id: UuidString
+    data: HeartbeatData
+
+
+class DeviceStatusChangeData(ClosedModel):
+    account_id: UuidString
+    changed_at: Timestamp
+    device_id: UuidString
+    status: Literal["lost", "revoked"]
+
+
+class DeviceStatusChangeResponse(ClosedModel):
+    protocol_version: Literal[1]
+    request_id: UuidString
+    data: DeviceStatusChangeData
 
 
 class ProtocolErrorBody(ClosedModel):

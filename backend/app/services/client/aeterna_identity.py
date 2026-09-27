@@ -27,6 +27,7 @@ from app.schemas.client.aeterna_protocol import (
     DeviceBindingDelayedConfirmationRequest,
     DeviceBindingRequest,
 )
+from app.services.client.aeterna_heartbeat import DEVICE_DORMANCY
 from app.services.common.aeterna_notifier import AeternaAccountNotifier
 from app.services.common.aeterna_security import (
     AeternaIdentityKeys,
@@ -341,18 +342,40 @@ class AeternaIdentityService:
             )
         active_count = await self._device_count(db, account.id, "active")
         pending_count = await self._binding_count(db, account.id, "pending")
-        if active_count >= MAX_ACTIVE_DEVICES or (
+        proposed_device_id = uuid.UUID(payload.signed.device_id)
+        existing_device = await db.scalar(
+            select(AeternaDevice)
+            .where(
+                AeternaDevice.id == proposed_device_id,
+                AeternaDevice.account_id == account.id,
+            )
+            .with_for_update()
+        )
+        reverify_dormant = existing_device is not None
+        if existing_device is not None:
+            if existing_device.status != "dormant":
+                raise AeternaProtocolException(
+                    409, "device.status_terminal", request_id
+                )
+            if not secrets.compare_digest(existing_device.public_key, public_key):
+                raise AeternaProtocolException(401, "device.proof_invalid", request_id)
+
+        if (active_count >= MAX_ACTIVE_DEVICES and not reverify_dormant) or (
             account.first_device_bound_at is not None
             and pending_count >= MAX_PENDING_DEVICES
         ):
             raise AeternaProtocolException(409, "device.limit_reached", request_id)
 
         now = self.clock()
-        immediate = account.first_device_bound_at is None and active_count == 0
+        immediate = (
+            account.first_device_bound_at is None
+            and active_count == 0
+            and not reverify_dormant
+        )
         binding = AeternaDeviceBinding(
             id=self.uuid_factory(),
             account_id=account.id,
-            proposed_device_id=uuid.UUID(payload.signed.device_id),
+            proposed_device_id=proposed_device_id,
             public_key=public_key,
             label=label,
             state="active" if immediate else "pending",
@@ -375,6 +398,8 @@ class AeternaIdentityService:
                     label=label,
                     status="active",
                     bound_at=now,
+                    heartbeat_authorized_at=now,
+                    last_sequence=0,
                 )
             )
             event_type = "device.bound"
@@ -399,6 +424,18 @@ class AeternaIdentityService:
         signed = payload.signed
         request_id = signed.request_id
         account_id = uuid.UUID(signed.account_id)
+        account = await db.scalar(
+            select(AeternaAccount)
+            .where(
+                AeternaAccount.id == account_id,
+                AeternaAccount.is_active.is_(True),
+            )
+            .with_for_update()
+        )
+        if account is None:
+            raise AeternaProtocolException(
+                403, "device.approver_not_active", request_id
+            )
         approver = await db.scalar(
             select(AeternaDevice)
             .where(
@@ -423,6 +460,30 @@ class AeternaIdentityService:
         )
         if replay is not None:
             return replay
+
+        now = self.clock()
+        reference = approver.last_seen_at or approver.heartbeat_authorized_at
+        if reference + DEVICE_DORMANCY <= now:
+            approver.status = "dormant"
+            account.last_activity_at = await db.scalar(
+                select(func.max(AeternaDevice.last_seen_at)).where(
+                    AeternaDevice.account_id == account_id,
+                    AeternaDevice.status == "active",
+                )
+            )
+            db.add(
+                AeternaSecurityAudit(
+                    id=self.uuid_factory(),
+                    account_id=account_id,
+                    event_type="device.dormant",
+                    request_id=uuid.UUID(request_id),
+                    device_id=approver.id,
+                )
+            )
+            await db.commit()
+            raise AeternaProtocolException(
+                403, "device.approver_not_active", request_id
+            )
         binding = await self._pending_binding(
             db, account_id, signed.binding_id, request_id
         )
@@ -722,23 +783,49 @@ class AeternaIdentityService:
         binding.activated_at = now
         binding.challenge_consumed_at = now
         binding.challenge = None
-        db.add(
-            AeternaDevice(
-                id=binding.proposed_device_id,
-                account_id=binding.account_id,
-                public_key=binding.public_key,
-                label=binding.label,
-                status="active",
-                bound_at=now,
+        existing_device = await db.scalar(
+            select(AeternaDevice)
+            .where(
+                AeternaDevice.id == binding.proposed_device_id,
+                AeternaDevice.account_id == binding.account_id,
             )
+            .with_for_update()
         )
+        if existing_device is None:
+            db.add(
+                AeternaDevice(
+                    id=binding.proposed_device_id,
+                    account_id=binding.account_id,
+                    public_key=binding.public_key,
+                    label=binding.label,
+                    status="active",
+                    bound_at=now,
+                    heartbeat_authorized_at=now,
+                    last_sequence=0,
+                )
+            )
+            audit_event = "device.bound"
+        else:
+            if existing_device.status != "dormant" or not secrets.compare_digest(
+                existing_device.public_key, binding.public_key
+            ):
+                raise AeternaProtocolException(
+                    409, "device.status_terminal", request_id
+                )
+            existing_device.status = "active"
+            existing_device.label = binding.label
+            existing_device.heartbeat_authorized_at = now
+            existing_device.last_seen_at = None
+            existing_device.last_heartbeat_request_id = None
+            existing_device.last_heartbeat_request_digest = None
+            audit_event = "device.reverified"
         if account.first_device_bound_at is None:
             account.first_device_bound_at = now
         data = self._binding_data(binding)
         self._record_result(
             db, binding.account_id, operation, request_id, digest, 200, data
         )
-        self._audit(db, binding.account_id, "device.bound", request_id, binding)
+        self._audit(db, binding.account_id, audit_event, request_id, binding)
         notification_email = await self._account_email(
             db, binding.account_id, request_id
         )

@@ -201,6 +201,97 @@ async def request_binding(
     return document, data
 
 
+async def approve_pending_binding(
+    db,
+    service: AeternaIdentityService,
+    notifier: CommitObservingNotifier,
+    account_id: str,
+    pending: dict,
+    approving_device_id: str,
+    approving_key: Ed25519PrivateKey,
+    proposed_key: Ed25519PrivateKey,
+) -> dict:
+    signed = {
+        "account_id": account_id,
+        "approving_device_id": approving_device_id,
+        "binding_id": pending["binding_id"],
+        "canonicalization": "jcs-rfc8785",
+        "challenge": pending["challenge"],
+        "device_id": pending["device_id"],
+        "domain": "aeterna.device-binding.approval.v1",
+        "operation": "device_binding.approval",
+        "protocol_version": 1,
+        "public_key": public_key(proposed_key),
+        "request_id": new_request_id(),
+        "signature_version": 1,
+    }
+    document = signed_envelope(signed, approving_key)
+    payload = DeviceBindingApprovalRequest.model_validate(document)
+    status_code, data = await service.approve_binding(db, payload, document, notifier)
+    assert status_code == 200
+    return data
+
+
+async def test_invalid_approval_cannot_mutate_a_stale_approver(identity_context):
+    service, clock, notifier = identity_context
+    approver_key = signing_key(0x61)
+    wrong_key = signing_key(0x62)
+    proposed_key = signing_key(0x63)
+    approver_id = str(uuid.uuid4())
+    proposed_id = str(uuid.uuid4())
+    session_factory = get_session_local()
+
+    async with session_factory() as db:
+        first_grant = await issue_grant(
+            db, service, notifier, "account_onboarding", "203.0.113.20"
+        )
+        await request_binding(
+            db,
+            service,
+            first_grant,
+            approver_key,
+            approver_id,
+            "Stale synthetic approver",
+        )
+        clock.advance(timedelta(seconds=61))
+        proposed_grant = await issue_grant(
+            db, service, notifier, "device_binding", "203.0.113.21"
+        )
+        _, pending = await request_binding(
+            db,
+            service,
+            proposed_grant,
+            proposed_key,
+            proposed_id,
+            "Pending synthetic device",
+        )
+        clock.advance(timedelta(days=90))
+
+        signed = {
+            "account_id": first_grant["account_id"],
+            "approving_device_id": approver_id,
+            "binding_id": pending["binding_id"],
+            "canonicalization": "jcs-rfc8785",
+            "challenge": pending["challenge"],
+            "device_id": proposed_id,
+            "domain": "aeterna.device-binding.approval.v1",
+            "operation": "device_binding.approval",
+            "protocol_version": 1,
+            "public_key": public_key(proposed_key),
+            "request_id": new_request_id(),
+            "signature_version": 1,
+        }
+        document = signed_envelope(signed, wrong_key)
+        payload = DeviceBindingApprovalRequest.model_validate(document)
+        with pytest.raises(AeternaProtocolException) as invalid:
+            await service.approve_binding(db, payload, document, notifier)
+        assert invalid.value.code == "device.proof_invalid"
+
+        approver = await db.get(AeternaDevice, uuid.UUID(approver_id))
+        assert approver is not None
+        assert approver.status == "active"
+
+
 async def test_complete_first_approval_cancellation_and_delayed_binding_paths(
     identity_context,
 ):
@@ -455,3 +546,163 @@ async def test_challenge_exhausts_after_five_constant_shape_failures(identity_co
         assert stored is not None
         assert stored.attempt_count == 5
         assert stored.status == "exhausted"
+
+
+async def test_dormant_device_reverification_preserves_sequence_for_both_paths(
+    identity_context,
+):
+    service, clock, notifier = identity_context
+    first_key = signing_key(0x51)
+    second_key = signing_key(0x52)
+    first_device_id = str(uuid.uuid4())
+    second_device_id = str(uuid.uuid4())
+    session_factory = get_session_local()
+
+    async with session_factory() as db:
+        first_grant = await issue_grant(
+            db, service, notifier, "account_onboarding", "203.0.113.10"
+        )
+        _, first_binding = await request_binding(
+            db,
+            service,
+            first_grant,
+            first_key,
+            first_device_id,
+            "First reverify device",
+        )
+        clock.advance(timedelta(seconds=61))
+        second_grant = await issue_grant(
+            db, service, notifier, "device_binding", "203.0.113.11"
+        )
+        _, second_pending = await request_binding(
+            db,
+            service,
+            second_grant,
+            second_key,
+            second_device_id,
+            "Second reverify device",
+        )
+        await approve_pending_binding(
+            db,
+            service,
+            notifier,
+            first_grant["account_id"],
+            second_pending,
+            first_device_id,
+            first_key,
+            second_key,
+        )
+
+        first_device = await db.get(AeternaDevice, uuid.UUID(first_device_id))
+        first_device.status = "dormant"
+        first_device.last_sequence = 7
+        first_device.last_seen_at = clock.current - timedelta(days=91)
+        await db.commit()
+
+        clock.advance(timedelta(seconds=61))
+        reverify_grant = await issue_grant(
+            db, service, notifier, "device_binding", "203.0.113.12"
+        )
+        _, reverify_pending = await request_binding(
+            db,
+            service,
+            reverify_grant,
+            first_key,
+            first_device_id,
+            "First reverified device",
+        )
+        assert reverify_pending["state"] == "pending"
+        await approve_pending_binding(
+            db,
+            service,
+            notifier,
+            first_grant["account_id"],
+            reverify_pending,
+            second_device_id,
+            second_key,
+            first_key,
+        )
+        await db.refresh(first_device)
+        assert first_device.status == "active"
+        assert first_device.last_sequence == 7
+        assert first_device.last_seen_at is None
+        assert first_device.heartbeat_authorized_at == clock.current
+
+        second_device = await db.get(AeternaDevice, uuid.UUID(second_device_id))
+        second_device.status = "dormant"
+        second_device.last_sequence = 9
+        second_device.last_seen_at = clock.current - timedelta(days=91)
+        await db.commit()
+
+        clock.advance(timedelta(seconds=61))
+        delayed_start_grant = await issue_grant(
+            db, service, notifier, "device_binding", "203.0.113.13"
+        )
+        _, delayed_pending = await request_binding(
+            db,
+            service,
+            delayed_start_grant,
+            second_key,
+            second_device_id,
+            "Second reverified device",
+        )
+        clock.advance(timedelta(hours=24, seconds=1))
+        delayed_grant = await issue_grant(
+            db,
+            service,
+            notifier,
+            "device_binding_delayed_confirmation",
+            "203.0.113.14",
+            delayed_pending["binding_id"],
+        )
+        delayed_signed = {
+            "account_id": delayed_grant["account_id"],
+            "binding_grant_id": delayed_grant["binding_grant_id"],
+            "binding_id": delayed_pending["binding_id"],
+            "canonicalization": "jcs-rfc8785",
+            "challenge": delayed_pending["challenge"],
+            "device_id": second_device_id,
+            "domain": "aeterna.device-binding.request.v1",
+            "operation": "device_binding.delayed_confirmation",
+            "protocol_version": 1,
+            "public_key": public_key(second_key),
+            "request_id": new_request_id(),
+            "signature_version": 1,
+        }
+        delayed_document = signed_envelope(delayed_signed, second_key)
+        delayed_payload = DeviceBindingDelayedConfirmationRequest.model_validate(
+            delayed_document
+        )
+        status_code, delayed_active = await service.confirm_delayed_binding(
+            db,
+            delayed_payload,
+            delayed_document,
+            delayed_grant["binding_grant_token"],
+            notifier,
+        )
+        assert status_code == 200
+        assert delayed_active["state"] == "active"
+        await db.refresh(second_device)
+        assert second_device.status == "active"
+        assert second_device.last_sequence == 9
+        assert second_device.last_seen_at is None
+        assert second_device.heartbeat_authorized_at == clock.current
+
+        bindings = list(
+            (
+                await db.scalars(
+                    select(AeternaDeviceBinding).where(
+                        AeternaDeviceBinding.proposed_device_id.in_(
+                            [uuid.UUID(first_device_id), uuid.UUID(second_device_id)]
+                        )
+                    )
+                )
+            ).all()
+        )
+        assert len(bindings) == 4
+        reverified_events = await db.scalar(
+            select(func.count(AeternaSecurityAudit.id)).where(
+                AeternaSecurityAudit.event_type == "device.reverified"
+            )
+        )
+        assert reverified_events == 2

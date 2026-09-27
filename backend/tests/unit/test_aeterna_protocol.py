@@ -17,6 +17,10 @@ from app.schemas.client.aeterna_protocol import (
     AccountChallengeRequest,
     DeviceBindingApprovalRequest,
     DeviceBindingRequest,
+    DeviceStatusChangeRequest,
+    DeviceStatusChangeResponse,
+    HeartbeatRequest,
+    HeartbeatResponse,
 )
 from app.services.common.aeterna_security import (
     IdentityKeyUnavailable,
@@ -28,7 +32,7 @@ from app.services.common.aeterna_security import (
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "aeterna-protocol-v1"
 EXPECTED_PUBLIC_RELEASE_DIGEST = (
-    "a2d4fe59198267d3a246e278c6a0ab196c5f6660ed48b9f1dd276fb22af447fd"
+    "47334129068437fde38acb68ab9310d8e64c95629e2ef95645eb1cd1c7e4e0d9"
 )
 
 
@@ -59,7 +63,7 @@ def make_request(body: bytes, content_type: str = "application/json") -> Request
 
 def test_vendored_public_release_digest_and_every_file_hash_match():
     manifest = load_json("manifest.json")
-    assert manifest["release_tag"] == "protocol-v1.0.0"
+    assert manifest["release_tag"] == "protocol-v1.1.0"
     assert manifest["release_digest"] == EXPECTED_PUBLIC_RELEASE_DIGEST
     for entry in manifest["files"]:
         content = (FIXTURE_ROOT / entry["path"]).read_bytes()
@@ -80,6 +84,11 @@ def test_python_jcs_and_ed25519_match_published_request_and_approval_vectors():
         (
             "fixtures/signatures/device-binding-approval.json",
             DeviceBindingApprovalRequest,
+        ),
+        ("fixtures/signatures/heartbeat-request.json", HeartbeatRequest),
+        (
+            "fixtures/signatures/device-status-change.json",
+            DeviceStatusChangeRequest,
         ),
     ]:
         fixture = load_json(fixture_path)
@@ -104,6 +113,8 @@ def test_published_signature_failure_vectors_fail_closed():
         "fixtures/signatures/device-binding-request-wrong-key.json",
         "fixtures/signatures/device-binding-request-modified-signature.json",
         "fixtures/signatures/device-binding-cross-domain-replay.json",
+        "fixtures/signatures/heartbeat-modified-payload.json",
+        "fixtures/signatures/heartbeat-cross-domain-replay.json",
     ]:
         fixture = load_json(fixture_path)
         envelope = fixture["envelope"]
@@ -121,6 +132,15 @@ def test_python_jcs_matches_unicode_property_order_and_escaping_vector():
     assert canonical == decode_base64url(fixture["canonical_bytes"], len(canonical))
 
 
+def test_i10_published_success_responses_match_runtime_models():
+    HeartbeatResponse.model_validate(
+        load_json("fixtures/valid/heartbeat-response.json")
+    )
+    DeviceStatusChangeResponse.model_validate(
+        load_json("fixtures/valid/device-status-change-response.json")
+    )
+
+
 @pytest.mark.asyncio
 async def test_strict_parser_accepts_valid_fixture():
     body = (FIXTURE_ROOT / "fixtures/valid/account-challenge-request.json").read_bytes()
@@ -132,30 +152,38 @@ async def test_strict_parser_accepts_valid_fixture():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("path", "expected_code"),
+    ("path", "model", "expected_code"),
     [
         (
             "fixtures/invalid/account-challenge-duplicate-member.json",
+            AccountChallengeRequest,
             "protocol.invalid_json",
         ),
         (
             "fixtures/invalid/device-binding-request-extra-field.json",
+            DeviceBindingRequest,
             "protocol.invalid_request",
         ),
         (
             "fixtures/invalid/device-binding-request-forbidden-data.json",
+            DeviceBindingRequest,
             "protocol.invalid_request",
         ),
         (
             "fixtures/invalid/device-binding-request-signature-padding.json",
+            DeviceBindingRequest,
+            "protocol.invalid_request",
+        ),
+        (
+            "fixtures/invalid/heartbeat-request-forbidden-data.json",
+            HeartbeatRequest,
             "protocol.invalid_request",
         ),
     ],
 )
-async def test_strict_parser_rejects_published_invalid_fixtures(path, expected_code):
-    model = (
-        AccountChallengeRequest if "account-challenge" in path else DeviceBindingRequest
-    )
+async def test_strict_parser_rejects_published_invalid_fixtures(
+    path, model, expected_code
+):
     with pytest.raises(AeternaProtocolException) as raised:
         await parse_protocol_body(
             make_request((FIXTURE_ROOT / path).read_bytes()), model
@@ -198,15 +226,18 @@ async def test_strict_parser_rejects_media_type_bom_size_and_unknown_version():
         assert raised.value.code == expected_code
 
 
-def test_client_registry_exposes_only_v1_identity_and_safe_config_routes():
+def test_client_registry_exposes_only_v1_protocol_and_safe_config_routes():
     configured_modules = {route.module_path for route in get_client_routes()}
     assert "app.api.client.v1.auth" not in configured_modules
     assert "app.api.client.v1.aeterna_identity" in configured_modules
+    assert "app.api.client.v1.aeterna_heartbeat" in configured_modules
 
     client_app = create_client_app()
     paths = set(client_app.openapi()["paths"])
     assert "/api/v1/account-challenges" in paths
     assert "/api/v1/device-bindings" in paths
+    assert "/api/v1/heartbeats" in paths
+    assert "/api/v1/device-status-changes" in paths
     assert "/api/v1/auth/register" not in paths
     assert "/api/v1/auth/login" not in paths
 
