@@ -1,10 +1,10 @@
-"""Celery entry points for policy, Outbox, and I12 email workflows."""
+"""Celery entry points for policy, email, and delayed-recovery workflows."""
 
 import asyncio
 from datetime import UTC, datetime
 
 from celery import shared_task
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.db.base import create_scheduler_engine, create_scheduler_session_factory
 from app.models.account_policy import (
@@ -13,7 +13,9 @@ from app.models.account_policy import (
     AccountPolicyState,
 )
 from app.models.aeterna_notification import AeternaEmailOutboxEvent
+from app.models.aeterna_recovery import AeternaRecoveryRecord
 from app.services.client.aeterna_notification import get_aeterna_notification_service
+from app.services.client.aeterna_recovery import get_aeterna_recovery_service
 from app.services.internal.account_policy_outbox import (
     OutboxCallbackOutcome,
     get_account_policy_outbox_service,
@@ -161,6 +163,60 @@ async def dispatch_aeterna_email_notifications() -> dict[str, int]:
         await engine.dispose()
 
 
+async def materialize_recovery_grants() -> dict[str, int]:
+    """Create contact-scoped claim authority only for released accounts."""
+
+    engine = create_scheduler_engine()
+    session_factory = create_scheduler_session_factory(engine)
+    try:
+        async with session_factory() as db:
+            account_ids = list(
+                await db.scalars(
+                    select(AccountPolicy.account_id).where(
+                        AccountPolicy.state == AccountPolicyState.RELEASED.value,
+                        AccountPolicy.account_id.is_not(None),
+                    )
+                )
+            )
+        created = 0
+        failed = 0
+        service = get_aeterna_recovery_service()
+        for account_id in account_ids:
+            async with session_factory() as db:
+                try:
+                    created += len(
+                        await service.materialize_released_account(db, account_id)
+                    )
+                except Exception:
+                    failed += 1
+        return {"examined": len(account_ids), "created": created, "failed": failed}
+    finally:
+        await engine.dispose()
+
+
+async def cleanup_expired_recovery_records() -> dict[str, int]:
+    """Delete unconfirmed encrypted SRS records after their fixed expiry."""
+
+    engine = create_scheduler_engine()
+    session_factory = create_scheduler_session_factory(engine)
+    try:
+        now = datetime.now(UTC)
+        async with session_factory.begin() as db:
+            deleted_ids = list(
+                await db.scalars(
+                    delete(AeternaRecoveryRecord)
+                    .where(
+                        AeternaRecoveryRecord.state == "pending_confirmation",
+                        AeternaRecoveryRecord.expires_at <= now,
+                    )
+                    .returning(AeternaRecoveryRecord.id)
+                )
+            )
+        return {"deleted": len(deleted_ids)}
+    finally:
+        await engine.dispose()
+
+
 @shared_task(name="app.schedule.jobs.account_policy.scan")
 def scan_account_policies_task() -> dict[str, int]:
     """Run the server-time policy sweep in a worker-owned event loop."""
@@ -180,3 +236,17 @@ def dispatch_aeterna_email_notifications_task() -> dict[str, int]:
     """Send due I12 email events without treating transport as human reading."""
 
     return asyncio.run(dispatch_aeterna_email_notifications())
+
+
+@shared_task(name="app.schedule.jobs.account_policy.materialize_recovery_grants")
+def materialize_recovery_grants_task() -> dict[str, int]:
+    """Create released recovery grants in a worker-owned event loop."""
+
+    return asyncio.run(materialize_recovery_grants())
+
+
+@shared_task(name="app.schedule.jobs.account_policy.cleanup_expired_recovery_records")
+def cleanup_expired_recovery_records_task() -> dict[str, int]:
+    """Delete expired unconfirmed records in a worker-owned event loop."""
+
+    return asyncio.run(cleanup_expired_recovery_records())

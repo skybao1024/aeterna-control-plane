@@ -42,9 +42,9 @@ FastAPI client API -------- PostgreSQL
                 |
                 v
        Celery worker and beat
-                |
-                v
-       Email provider adapter
+          /             \
+         v               v
+Email provider adapter   Recovery KMS adapter
 
 Operator browser -> Backoffice UI -> Backoffice API
 ```
@@ -129,6 +129,17 @@ AWS SES is the selected production adapter and signed SNS is the callback
 boundary. External delivery remains disabled until the Region, sender identity,
 operating jurisdictions, provider use-case acceptance, and live-send matrix are
 approved. See backend ADR 0003.
+
+I13 stores one KMS ciphertext and non-secret binding metadata for each sealed
+device recovery record. Only authoritative `RELEASED` plus an accepted and
+verified Recovery Contact can materialize a contact-scoped grant. Claim links,
+OTP verifiers, and five-minute SRS-read capabilities are persisted only as
+digests; release re-locks every authoritative row and consumes the grant only
+after successful KMS decrypt and commit. The approved personal-project boundary
+uses one customer-managed symmetric single-Region key in `ap-southeast-1`, with
+no replica, CloudHSM, failover, or plaintext fallback. AWS SES may carry the
+recovery link and OTP, but live KMS/SES use remains disabled pending I15. See
+backend ADR 0004.
 
 ## Deployment
 

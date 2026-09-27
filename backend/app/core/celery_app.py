@@ -28,6 +28,16 @@ celery_app.conf.beat_schedule = {
         "schedule": 60.0,
         "options": {"queue": "scheduled_tasks"},
     },
+    "materialize-recovery-grants": {
+        "task": "app.schedule.jobs.account_policy.materialize_recovery_grants",
+        "schedule": 60.0,
+        "options": {"queue": "scheduled_tasks"},
+    },
+    "cleanup-expired-recovery-records": {
+        "task": "app.schedule.jobs.account_policy.cleanup_expired_recovery_records",
+        "schedule": 60.0,
+        "options": {"queue": "scheduled_tasks"},
+    },
 }
 
 celery_app.conf.timezone = "UTC"

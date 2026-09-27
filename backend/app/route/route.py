@@ -22,6 +22,7 @@ from app.schemas.response import ApiResponse
 from app.services.common.aeterna_email_adapter import (
     validate_email_delivery_configuration,
 )
+from app.services.common.aeterna_recovery_key import validate_recovery_key_configuration
 from app.services.common.aeterna_security import validate_identity_key_configuration
 from app.services.common.redis import redis_client
 from app.services.common.thread_pool import ThreadPoolService
@@ -57,6 +58,7 @@ async def lifespan(application: FastAPI):
     logger.info("Application starting up")
     validate_identity_key_configuration()
     validate_email_delivery_configuration()
+    validate_recovery_key_configuration()
 
     # Initialize thread pool service
     _thread_pool_service = ThreadPoolService()

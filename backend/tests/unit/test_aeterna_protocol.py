@@ -22,6 +22,11 @@ from app.schemas.client.aeterna_protocol import (
     HeartbeatRequest,
     HeartbeatResponse,
 )
+from app.schemas.client.aeterna_recovery import (
+    RecoveryRecordActionRequest,
+    RecoveryRecordProvisionRequest,
+    RecoverySecretResponse,
+)
 from app.services.common.aeterna_security import (
     IdentityKeyUnavailable,
     decode_base64url,
@@ -32,7 +37,7 @@ from app.services.common.aeterna_security import (
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "aeterna-protocol-v1"
 EXPECTED_PUBLIC_RELEASE_DIGEST = (
-    "47334129068437fde38acb68ab9310d8e64c95629e2ef95645eb1cd1c7e4e0d9"
+    "456335ec6baf6f7161aa715263943427402ff675606fc68db79cb381572ed2e1"
 )
 
 
@@ -63,7 +68,7 @@ def make_request(body: bytes, content_type: str = "application/json") -> Request
 
 def test_vendored_public_release_digest_and_every_file_hash_match():
     manifest = load_json("manifest.json")
-    assert manifest["release_tag"] == "protocol-v1.1.0"
+    assert manifest["release_tag"] == "protocol-v1.2.0"
     assert manifest["release_digest"] == EXPECTED_PUBLIC_RELEASE_DIGEST
     for entry in manifest["files"]:
         content = (FIXTURE_ROOT / entry["path"]).read_bytes()
@@ -89,6 +94,14 @@ def test_python_jcs_and_ed25519_match_published_request_and_approval_vectors():
         (
             "fixtures/signatures/device-status-change.json",
             DeviceStatusChangeRequest,
+        ),
+        (
+            "fixtures/signatures/recovery-record-provision.json",
+            RecoveryRecordProvisionRequest,
+        ),
+        (
+            "fixtures/signatures/recovery-record-confirm.json",
+            RecoveryRecordActionRequest,
         ),
     ]:
         fixture = load_json(fixture_path)
@@ -139,6 +152,9 @@ def test_i10_published_success_responses_match_runtime_models():
     DeviceStatusChangeResponse.model_validate(
         load_json("fixtures/valid/device-status-change-response.json")
     )
+    RecoverySecretResponse.model_validate(
+        load_json("fixtures/valid/recovery-secret-response.json")
+    )
 
 
 @pytest.mark.asyncio
@@ -177,6 +193,11 @@ async def test_strict_parser_accepts_valid_fixture():
         (
             "fixtures/invalid/heartbeat-request-forbidden-data.json",
             HeartbeatRequest,
+            "protocol.invalid_request",
+        ),
+        (
+            "fixtures/invalid/recovery-record-provision-forbidden-data.json",
+            RecoveryRecordProvisionRequest,
             "protocol.invalid_request",
         ),
     ],
@@ -231,6 +252,7 @@ def test_client_registry_exposes_only_v1_protocol_and_safe_config_routes():
     assert "app.api.client.v1.auth" not in configured_modules
     assert "app.api.client.v1.aeterna_identity" in configured_modules
     assert "app.api.client.v1.aeterna_heartbeat" in configured_modules
+    assert "app.api.client.v1.aeterna_recovery" in configured_modules
 
     client_app = create_client_app()
     paths = set(client_app.openapi()["paths"])
@@ -238,6 +260,12 @@ def test_client_registry_exposes_only_v1_protocol_and_safe_config_routes():
     assert "/api/v1/device-bindings" in paths
     assert "/api/v1/heartbeats" in paths
     assert "/api/v1/device-status-changes" in paths
+    assert "/api/v1/recovery/records/provision" in paths
+    assert "/api/v1/recovery/records/{recovery_id}/confirm" in paths
+    assert "/api/v1/recovery/records/{recovery_id}/abandon" in paths
+    assert "/api/v1/recovery/claim/start" in paths
+    assert "/api/v1/recovery/claim/verify" in paths
+    assert "/api/v1/recovery/{recovery_id}/release-secret" in paths
     assert "/api/v1/auth/register" not in paths
     assert "/api/v1/auth/login" not in paths
 

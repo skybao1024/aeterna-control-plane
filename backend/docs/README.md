@@ -11,6 +11,7 @@ public client protocol.
 - [ADR 0001: Account-policy transaction and outage semantics](./architecture/adr/0001-account-policy-transaction-and-outage-semantics.md)
 - [ADR 0002: Warning, grace, and transactional Outbox state machine](./architecture/adr/0002-warning-grace-outbox-state-machine.md)
 - [ADR 0003: Contact consent and email delivery boundary](./architecture/adr/0003-contact-consent-and-email-delivery-boundary.md)
+- [ADR 0004: Delayed recovery KMS and claim boundary](./architecture/adr/0004-delayed-recovery-kms-and-claim-boundary.md)
 
 ## API
 
@@ -19,6 +20,7 @@ public client protocol.
 ## Deployment
 
 - [AWS SES production email boundary](./deployment/aws-ses.md)
+- [AWS KMS delayed-recovery boundary](./deployment/aws-kms-recovery.md)
 
 ## Development
 
@@ -27,6 +29,7 @@ public client protocol.
 - [I03 concurrency prototype results](./development/i03-concurrency-prototype-results.md)
 - [I11 warning/grace state machine results](./development/i11-state-machine-results.md)
 - [I12 contacts and email notification results](./development/i12-notification-results.md)
+- [I13 delayed recovery implementation results](./development/i13-delayed-recovery-results.md)
 
 ## Security
 

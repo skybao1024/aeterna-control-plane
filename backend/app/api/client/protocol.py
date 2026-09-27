@@ -138,10 +138,15 @@ async def parse_protocol_body(
 
 
 def protocol_response(
-    request_id: str, data: dict[str, Any], status_code: int = 200
+    request_id: str,
+    data: dict[str, Any],
+    status_code: int = 200,
+    *,
+    no_store: bool = False,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
+        headers={"Cache-Control": "no-store"} if no_store else None,
         content={
             "protocol_version": PROTOCOL_VERSION,
             "request_id": request_id,

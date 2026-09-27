@@ -213,6 +213,42 @@ def derive_invitation_token(
     return encode_base64url(raw)
 
 
+def derive_recovery_link_token(
+    keys: AeternaIdentityKeys,
+    link_id: uuid.UUID,
+    key_version: int | None = None,
+) -> str:
+    """Derive a secret fragment token while storing only its verifier."""
+
+    selected_version = key_version or keys.version
+    if selected_version != keys.version:
+        raise IdentityKeyUnavailable("The required identity key version is unavailable")
+    raw = hmac.new(
+        keys.otp_key,
+        f"aeterna:recovery-claim-link:v1:{selected_version}:{link_id}".encode(),
+        hashlib.sha256,
+    ).digest()
+    return encode_base64url(raw)
+
+
+def derive_recovery_otp(
+    keys: AeternaIdentityKeys,
+    challenge_id: uuid.UUID,
+    key_version: int | None = None,
+) -> str:
+    """Derive a bounded challenge code so no plaintext OTP is persisted."""
+
+    selected_version = key_version or keys.version
+    if selected_version != keys.version:
+        raise IdentityKeyUnavailable("The required identity key version is unavailable")
+    digest = hmac.new(
+        keys.otp_key,
+        f"aeterna:recovery-otp-code:v1:{selected_version}:{challenge_id}".encode(),
+        hashlib.sha256,
+    ).digest()
+    return f"{int.from_bytes(digest[:8], 'big') % 100_000_000:08d}"
+
+
 def otp_verifier(
     keys: AeternaIdentityKeys, challenge_id: uuid.UUID, purpose: str, code: str
 ) -> bytes:

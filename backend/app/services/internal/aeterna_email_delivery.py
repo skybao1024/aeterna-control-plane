@@ -25,6 +25,10 @@ from app.models.aeterna_notification import (
     AeternaNotificationTemplate,
     AeternaRecipientSuppression,
 )
+from app.models.aeterna_recovery import (
+    AeternaRecoveryClaimLink,
+    AeternaRecoveryOtpChallenge,
+)
 from app.services.common.aeterna_email_adapter import (
     AeternaEmailAdapter,
     AeternaEmailEnvelope,
@@ -38,6 +42,8 @@ from app.services.common.aeterna_security import (
     decrypt_email,
     decrypt_private_text,
     derive_invitation_token,
+    derive_recovery_link_token,
+    derive_recovery_otp,
     get_identity_keys,
 )
 
@@ -458,6 +464,21 @@ class AeternaEmailDeliveryService:
                     "cancelled",
                 )
                 return DispatchResult(event.id, event.status, event.attempt_count)
+            if event.event_type in {
+                "recovery-claim-link",
+                "recovery-otp",
+                "recovery-claimed-contact",
+            } and (
+                contact is None
+                or contact.consent_status != "ACCEPTED"
+                or contact.verified_at is None
+                or contact.deleted_at is not None
+            ):
+                event.status = "cancelled"
+                event.cancelled_at = now
+                event.updated_at = now
+                self._audit(db, event, "system", "delivery.cancelled", "cancelled")
+                return DispatchResult(event.id, event.status, event.attempt_count)
 
             if event.event_type == "contact-invitation":
                 invitation = await db.scalar(
@@ -480,6 +501,53 @@ class AeternaEmailDeliveryService:
                         "delivery.cancelled",
                         "cancelled",
                     )
+                    return DispatchResult(event.id, event.status, event.attempt_count)
+            if event.event_type == "recovery-claim-link":
+                link = await db.scalar(
+                    select(AeternaRecoveryClaimLink)
+                    .where(AeternaRecoveryClaimLink.id == event.recovery_link_id)
+                    .with_for_update()
+                )
+                if link is None or link.status != "active" or link.expires_at <= now:
+                    event.status = "cancelled"
+                    event.cancelled_at = now
+                    event.updated_at = now
+                    self._audit(db, event, "system", "delivery.cancelled", "cancelled")
+                    return DispatchResult(event.id, event.status, event.attempt_count)
+            if event.event_type == "recovery-otp":
+                challenge_link_id = await db.scalar(
+                    select(AeternaRecoveryOtpChallenge.link_id).where(
+                        AeternaRecoveryOtpChallenge.id == event.recovery_challenge_id
+                    )
+                )
+                link = (
+                    await db.scalar(
+                        select(AeternaRecoveryClaimLink)
+                        .where(AeternaRecoveryClaimLink.id == challenge_link_id)
+                        .with_for_update()
+                    )
+                    if challenge_link_id is not None
+                    else None
+                )
+                challenge = await db.scalar(
+                    select(AeternaRecoveryOtpChallenge)
+                    .where(
+                        AeternaRecoveryOtpChallenge.id == event.recovery_challenge_id
+                    )
+                    .with_for_update()
+                )
+                if (
+                    link is None
+                    or link.status != "active"
+                    or link.expires_at <= now
+                    or challenge is None
+                    or challenge.status != "active"
+                    or challenge.expires_at <= now
+                ):
+                    event.status = "cancelled"
+                    event.cancelled_at = now
+                    event.updated_at = now
+                    self._audit(db, event, "system", "delivery.cancelled", "cancelled")
                     return DispatchResult(event.id, event.status, event.attempt_count)
 
             keys = self._keys()
@@ -565,17 +633,21 @@ class AeternaEmailDeliveryService:
         event: AeternaEmailOutboxEvent,
         now: datetime,
     ) -> AeternaEmailEnvelope:
-        owner_email = decrypt_email(
-            keys,
-            account.email_ciphertext,
-            account.email_nonce,
-            "account",
-            account.id,
-            account.email_key_version,
-        )
+        owner_email = None
+        if event.recipient_kind == "owner" or event.event_type == "contact-invitation":
+            owner_email = decrypt_email(
+                keys,
+                account.email_ciphertext,
+                account.email_nonce,
+                "account",
+                account.id,
+                account.email_key_version,
+            )
         custom_message = ""
         template = await db.get(AeternaNotificationTemplate, account.id)
         if event.recipient_kind == "owner":
+            if owner_email is None:
+                raise RuntimeError("Owner delivery is missing its recipient")
             recipient = owner_email
             if template is not None:
                 custom_message = decrypt_private_text(
@@ -599,6 +671,8 @@ class AeternaEmailDeliveryService:
                 contact.email_key_version,
             )
             if event.event_type == "contact-invitation":
+                if owner_email is None:
+                    raise RuntimeError("Invitation delivery is missing its owner")
                 invitation = await db.scalar(
                     select(AeternaContactInvitation)
                     .where(AeternaContactInvitation.id == event.invitation_id)
@@ -643,6 +717,55 @@ class AeternaEmailDeliveryService:
                         account.id,
                         template.contact_message_key_version,
                     )
+            elif event.event_type == "recovery-claim-link":
+                link = await db.get(AeternaRecoveryClaimLink, event.recovery_link_id)
+                if link is None or link.status != "active" or link.expires_at <= now:
+                    raise EmailDeliveryFailure(
+                        "recovery-link-unavailable", retryable=False
+                    )
+                token = derive_recovery_link_token(
+                    keys, link.id, link.token_key_version
+                )
+                action_url = (
+                    f"{settings.FRONTEND_URL.rstrip('/')}/recovery-claim"
+                    f"#token={token}"
+                )
+                subject = "Aeterna recovery access is available"
+                fixed_text = (
+                    "A delayed-recovery grant is now available to this verified "
+                    "recovery contact. The link expires in 24 hours and still "
+                    "requires a separate email code.\n\n"
+                    f"{action_url}"
+                )
+                custom_message = ""
+            elif event.event_type == "recovery-otp":
+                challenge = await db.get(
+                    AeternaRecoveryOtpChallenge, event.recovery_challenge_id
+                )
+                if (
+                    challenge is None
+                    or challenge.status != "active"
+                    or challenge.expires_at <= now
+                ):
+                    raise EmailDeliveryFailure(
+                        "recovery-otp-unavailable", retryable=False
+                    )
+                code = derive_recovery_otp(
+                    keys, challenge.id, challenge.otp_key_version
+                )
+                subject = "Aeterna recovery verification code"
+                fixed_text = (
+                    "Use this one-time code to continue the delayed-recovery "
+                    f"claim: {code}\n\nThe code expires in 10 minutes."
+                )
+                custom_message = ""
+            elif event.event_type == "recovery-claimed-contact":
+                subject = "Aeterna recovery security notice"
+                fixed_text = (
+                    "Another verified recovery contact completed a one-time "
+                    "recovery-secret claim for this Aeterna account."
+                )
+                custom_message = ""
             else:
                 raise RuntimeError("Unsupported contact email event type")
 
@@ -679,6 +802,11 @@ class AeternaEmailDeliveryService:
                 "Aeterna release boundary reached",
                 "Your Aeterna account reached its release boundary. This notice does "
                 "not contain or authorize access to recovery material.",
+            ),
+            "recovery-claimed-owner": (
+                "Aeterna recovery secret was claimed",
+                "A verified recovery contact completed a one-time recovery-secret "
+                "claim. This security notice contains no recovery material.",
             ),
         }
         try:

@@ -176,7 +176,9 @@ class AeternaEmailOutboxEvent(BaseModel):
         CheckConstraint(
             "event_type IN ('owner-pre-warning', 'owner-grace-period-started', "
             "'owner-warning-required', 'owner-release-authorized', "
-            "'contact-invitation', 'contact-test')",
+            "'contact-invitation', 'contact-test', 'recovery-claim-link', "
+            "'recovery-otp', 'recovery-claimed-owner', "
+            "'recovery-claimed-contact')",
             name="ck_aeterna_email_outbox_events_event_type",
         ),
         CheckConstraint(
@@ -191,7 +193,8 @@ class AeternaEmailOutboxEvent(BaseModel):
         ),
         CheckConstraint(
             "(recipient_kind = 'owner' AND contact_id IS NULL "
-            "AND invitation_id IS NULL) OR "
+            "AND invitation_id IS NULL AND recovery_link_id IS NULL "
+            "AND recovery_challenge_id IS NULL) OR "
             "(recipient_kind = 'contact' AND contact_id IS NOT NULL)",
             name="ck_aeterna_email_outbox_events_recipient_reference",
         ),
@@ -199,6 +202,16 @@ class AeternaEmailOutboxEvent(BaseModel):
             "(event_type = 'contact-invitation' AND invitation_id IS NOT NULL) OR "
             "(event_type <> 'contact-invitation' AND invitation_id IS NULL)",
             name="ck_aeterna_email_outbox_events_invitation_reference",
+        ),
+        CheckConstraint(
+            "(event_type = 'recovery-claim-link' AND recovery_link_id IS NOT NULL) OR "
+            "(event_type <> 'recovery-claim-link' AND recovery_link_id IS NULL)",
+            name="ck_aeterna_email_outbox_events_recovery_link_reference",
+        ),
+        CheckConstraint(
+            "(event_type = 'recovery-otp' AND recovery_challenge_id IS NOT NULL) OR "
+            "(event_type <> 'recovery-otp' AND recovery_challenge_id IS NULL)",
+            name="ck_aeterna_email_outbox_events_recovery_challenge_reference",
         ),
         Index(
             "ix_aeterna_email_outbox_events_dispatch",
@@ -230,6 +243,16 @@ class AeternaEmailOutboxEvent(BaseModel):
     invitation_id = Column(
         UUID(as_uuid=True),
         ForeignKey("aeterna_contact_invitations.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    recovery_link_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_recovery_claim_links.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    recovery_challenge_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_recovery_otp_challenges.id", ondelete="CASCADE"),
         nullable=True,
     )
     source_policy_outbox_id = Column(

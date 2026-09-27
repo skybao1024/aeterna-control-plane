@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     AWS_SES_CONFIGURATION_SET: str = ""
     AWS_SES_SNS_TOPIC_ARN: str = ""
 
+    # Aeterna I13 recovery SRS envelope boundary. AWS credentials are supplied
+    # only through the standard IAM role/credential provider chain.
+    AETERNA_RECOVERY_KEY_PROVIDER: str = "disabled"
+    AETERNA_RECOVERY_KMS_ENABLED: bool = False
+    AETERNA_RECOVERY_KMS_REGION: str = "ap-southeast-1"
+    AETERNA_RECOVERY_KMS_KEY_ARN: str = ""
+
     # Brevo configuration (alternative email provider)
     BREVO_API_KEY: str = ""
     BREVO_EMAIL_FROM: str = "noreply@example.com"
