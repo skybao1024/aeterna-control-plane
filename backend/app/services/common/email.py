@@ -102,10 +102,10 @@ class EmailService:
 
                 server.sendmail(from_email, to_emails, message.as_string())
 
-            logger.info(f"Email sent successfully to {to_emails}")
+            logger.info("Email sent successfully")
             return True
-        except Exception as e:
-            logger.error(f"Error sending email: {e}")
+        except Exception:
+            logger.error("Email sending failed")
             raise
 
     async def send(
@@ -137,10 +137,10 @@ class EmailService:
             )
 
             await fastmail.send_message(message)
-            logger.info(f"Email sent asynchronously to {to_emails}")
+            logger.info("Email sent asynchronously")
             return True
-        except Exception as e:
-            logger.warning(f"FastMail sending failed, trying synchronous method: {e}")
+        except Exception:
+            logger.warning("FastMail sending failed; trying synchronous delivery")
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 self.thread_pool_service.get_executor(),
@@ -188,8 +188,8 @@ class EmailService:
                 from_email=from_email,
                 from_name=from_name,
             )
-        except Exception as e:
-            logger.error(f"Error sending email with template: {e}")
+        except Exception:
+            logger.error("Email template delivery failed")
             raise
 
     # Dedicated methods for convenience

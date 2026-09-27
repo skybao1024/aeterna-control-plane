@@ -80,6 +80,14 @@ class Settings(BaseSettings):
     VERIFICATION_CODE_EXPIRE_SECONDS: int = 300  # 5 minutes
     VERIFICATION_CODE_COOLDOWN_SECONDS: int = 60  # 60 seconds cooldown
 
+    # Aeterna account identity keys. These environment-backed keys are allowed
+    # only for development and test environments. Production must use a
+    # separately approved KMS/HSM provider and therefore fails closed while
+    # that provider remains unconfigured.
+    AETERNA_PII_KEY_V1: str = ""
+    AETERNA_LOOKUP_KEY_V1: str = ""
+    AETERNA_OTP_KEY_V1: str = ""
+
     # Password reset configuration
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
 

@@ -1,0 +1,231 @@
+"""Cross-language fixture and strict transport tests for public protocol v1."""
+
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+import rfc8785
+from starlette.requests import Request
+
+from app.api.client.protocol import parse_protocol_body
+from app.configs.docs_apps import create_client_app
+from app.core.config import settings
+from app.exceptions.aeterna_protocol import AeternaProtocolException
+from app.route.router_registry import get_client_routes
+from app.schemas.client.aeterna_protocol import (
+    AccountChallengeRequest,
+    DeviceBindingApprovalRequest,
+    DeviceBindingRequest,
+)
+from app.services.common.aeterna_security import (
+    IdentityKeyUnavailable,
+    decode_base64url,
+    get_identity_keys,
+    validate_identity_key_configuration,
+    verify_signature,
+)
+
+FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "aeterna-protocol-v1"
+EXPECTED_PUBLIC_RELEASE_DIGEST = (
+    "a2d4fe59198267d3a246e278c6a0ab196c5f6660ed48b9f1dd276fb22af447fd"
+)
+
+
+def load_json(path: str) -> dict:
+    return json.loads((FIXTURE_ROOT / path).read_text(encoding="utf-8"))
+
+
+def make_request(body: bytes, content_type: str = "application/json") -> Request:
+    delivered = False
+
+    async def receive():
+        nonlocal delivered
+        if delivered:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        delivered = True
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/test",
+            "headers": [(b"content-type", content_type.encode("ascii"))],
+        },
+        receive,
+    )
+
+
+def test_vendored_public_release_digest_and_every_file_hash_match():
+    manifest = load_json("manifest.json")
+    assert manifest["release_tag"] == "protocol-v1.0.0"
+    assert manifest["release_digest"] == EXPECTED_PUBLIC_RELEASE_DIGEST
+    for entry in manifest["files"]:
+        content = (FIXTURE_ROOT / entry["path"]).read_bytes()
+        assert hashlib.sha256(content).hexdigest() == entry["sha256"]
+
+    unsigned = {
+        key: value for key, value in manifest.items() if key != "release_digest"
+    }
+    assert (
+        hashlib.sha256(rfc8785.dumps(unsigned)).hexdigest()
+        == manifest["release_digest"]
+    )
+
+
+def test_python_jcs_and_ed25519_match_published_request_and_approval_vectors():
+    for fixture_path, model in [
+        ("fixtures/signatures/device-binding-request.json", DeviceBindingRequest),
+        (
+            "fixtures/signatures/device-binding-approval.json",
+            DeviceBindingApprovalRequest,
+        ),
+    ]:
+        fixture = load_json(fixture_path)
+        envelope = {
+            "protocol_version": 1,
+            "signed": fixture["document"],
+            "signature": fixture["signature"],
+        }
+        model.model_validate(envelope)
+        assert rfc8785.dumps(fixture["document"]) == decode_base64url(
+            fixture["canonical_bytes"], len(rfc8785.dumps(fixture["document"]))
+        )
+        assert verify_signature(
+            decode_base64url(fixture["public_key"], 32),
+            fixture["document"],
+            fixture["signature"],
+        )
+
+
+def test_published_signature_failure_vectors_fail_closed():
+    for fixture_path in [
+        "fixtures/signatures/device-binding-request-wrong-key.json",
+        "fixtures/signatures/device-binding-request-modified-signature.json",
+        "fixtures/signatures/device-binding-cross-domain-replay.json",
+    ]:
+        fixture = load_json(fixture_path)
+        envelope = fixture["envelope"]
+        assert fixture["expected"] == "device.proof_invalid"
+        assert not verify_signature(
+            decode_base64url(fixture["verification_public_key"], 32),
+            envelope["signed"],
+            envelope["signature"],
+        )
+
+
+def test_python_jcs_matches_unicode_property_order_and_escaping_vector():
+    fixture = load_json("fixtures/signatures/jcs-unicode-and-escaping.json")
+    canonical = rfc8785.dumps(fixture["document"])
+    assert canonical == decode_base64url(fixture["canonical_bytes"], len(canonical))
+
+
+@pytest.mark.asyncio
+async def test_strict_parser_accepts_valid_fixture():
+    body = (FIXTURE_ROOT / "fixtures/valid/account-challenge-request.json").read_bytes()
+    payload, document = await parse_protocol_body(
+        make_request(body), AccountChallengeRequest
+    )
+    assert payload.request_id == document["request_id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("path", "expected_code"),
+    [
+        (
+            "fixtures/invalid/account-challenge-duplicate-member.json",
+            "protocol.invalid_json",
+        ),
+        (
+            "fixtures/invalid/device-binding-request-extra-field.json",
+            "protocol.invalid_request",
+        ),
+        (
+            "fixtures/invalid/device-binding-request-forbidden-data.json",
+            "protocol.invalid_request",
+        ),
+        (
+            "fixtures/invalid/device-binding-request-signature-padding.json",
+            "protocol.invalid_request",
+        ),
+    ],
+)
+async def test_strict_parser_rejects_published_invalid_fixtures(path, expected_code):
+    model = (
+        AccountChallengeRequest if "account-challenge" in path else DeviceBindingRequest
+    )
+    with pytest.raises(AeternaProtocolException) as raised:
+        await parse_protocol_body(
+            make_request((FIXTURE_ROOT / path).read_bytes()), model
+        )
+    assert raised.value.code == expected_code
+
+
+@pytest.mark.asyncio
+async def test_strict_parser_rejects_media_type_bom_size_and_unknown_version():
+    valid = load_json("fixtures/valid/account-challenge-request.json")
+    cases = [
+        (
+            make_request(json.dumps(valid).encode(), "application/json; charset=utf-8"),
+            "protocol.unsupported_media_type",
+        ),
+        (
+            make_request(b"\xef\xbb\xbf" + json.dumps(valid).encode()),
+            "protocol.invalid_json",
+        ),
+        (make_request(b" " * 16_385), "protocol.payload_too_large"),
+        (
+            make_request(json.dumps({**valid, "protocol_version": 2}).encode()),
+            "protocol.unsupported_version",
+        ),
+        (
+            make_request(json.dumps({**valid, "binding_id": None}).encode()),
+            "protocol.invalid_request",
+        ),
+        (
+            make_request(
+                b'{"protocol_version":1,"request_id":"00000000-0000-4000-8000-000000000010",'
+                b'"email":"owner\\ud800@example.com","purpose":"account_onboarding"}'
+            ),
+            "protocol.invalid_json",
+        ),
+    ]
+    for request, expected_code in cases:
+        with pytest.raises(AeternaProtocolException) as raised:
+            await parse_protocol_body(request, AccountChallengeRequest)
+        assert raised.value.code == expected_code
+
+
+def test_client_registry_exposes_only_v1_identity_and_safe_config_routes():
+    configured_modules = {route.module_path for route in get_client_routes()}
+    assert "app.api.client.v1.auth" not in configured_modules
+    assert "app.api.client.v1.aeterna_identity" in configured_modules
+
+    client_app = create_client_app()
+    paths = set(client_app.openapi()["paths"])
+    assert "/api/v1/account-challenges" in paths
+    assert "/api/v1/device-bindings" in paths
+    assert "/api/v1/auth/register" not in paths
+    assert "/api/v1/auth/login" not in paths
+
+
+def test_environment_key_provider_fails_closed_in_production(monkeypatch):
+    monkeypatch.setattr(settings, "ENV", "production")
+    with pytest.raises(IdentityKeyUnavailable, match="KMS/HSM"):
+        get_identity_keys()
+
+
+def test_development_startup_allows_unconfigured_but_rejects_partial_keys(monkeypatch):
+    monkeypatch.setattr(settings, "ENV", "development")
+    for field in (
+        "AETERNA_PII_KEY_V1",
+        "AETERNA_LOOKUP_KEY_V1",
+        "AETERNA_OTP_KEY_V1",
+    ):
+        monkeypatch.setattr(settings, field, "")
+    validate_identity_key_configuration()
+    monkeypatch.setattr(settings, "AETERNA_PII_KEY_V1", "invalid")
+    with pytest.raises(IdentityKeyUnavailable):
+        validate_identity_key_configuration()

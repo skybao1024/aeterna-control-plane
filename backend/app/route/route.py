@@ -10,15 +10,16 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from app.api.client.protocol import install_protocol_exception_handler
 from app.common.log_consumer import consume_logs_forever
 from app.configs.docs_apps import create_backoffice_app, create_client_app
 from app.core.config import settings
-from app.core.log_config import (is_master_process, setup_logging,
-                                 shutdown_logging)
+from app.core.log_config import is_master_process, setup_logging, shutdown_logging
 from app.db.base import close_db_engine
 from app.exceptions.http_exceptions import APIException
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.schemas.response import ApiResponse
+from app.services.common.aeterna_security import validate_identity_key_configuration
 from app.services.common.redis import redis_client
 from app.services.common.thread_pool import ThreadPoolService
 
@@ -51,6 +52,7 @@ async def lifespan(application: FastAPI):
     # Execute on startup
     setup_logging()
     logger.info("Application starting up")
+    validate_identity_key_configuration()
 
     # Initialize thread pool service
     _thread_pool_service = ThreadPoolService()
@@ -150,9 +152,12 @@ def create_app():
             }
 
     # Use route registry to register all routes uniformly
-    from app.route.router_registry import (get_backoffice_routes,
-                                           get_client_routes,
-                                           get_common_routes, register_routes)
+    from app.route.router_registry import (
+        get_backoffice_routes,
+        get_client_routes,
+        get_common_routes,
+        register_routes,
+    )
 
     # Register client routes
     register_routes(app, get_client_routes())
@@ -162,6 +167,8 @@ def create_app():
 
     # Register common routes
     register_routes(app, get_common_routes())
+
+    install_protocol_exception_handler(app)
 
     # Mount separated documentation applications
     client_docs_app = create_client_app()

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
+from app.api.client.protocol import install_protocol_exception_handler
 from app.configs.backoffice_swagger_config import (
     BACKOFFICE_OPENAPI_INFO,
     BACKOFFICE_OPENAPI_TAGS,
@@ -58,6 +59,7 @@ def create_client_app() -> FastAPI:
     from app.route.router_registry import get_client_routes, register_routes
 
     register_routes(app, get_client_routes())
+    install_protocol_exception_handler(app)
 
     return app
 

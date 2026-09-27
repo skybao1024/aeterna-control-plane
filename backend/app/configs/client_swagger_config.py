@@ -33,20 +33,24 @@ recovery coordination.
 - Master passwords, emergency recovery codes, and vault data keys must never be uploaded.
 - New endpoints must be reviewed against this boundary before registration.
 
-The currently registered routes are framework foundations. Product endpoints
-will be added only with their domain services, migrations, tests, and audit rules.
+Account verification and device binding use the public v1 protocol contract.
+Every request is bounded, strictly parsed, versioned, and closed to unknown
+members. Mailbox-control grants are short-lived, purpose-bound, and one-use.
 
 ## Response format
 
-All API responses follow a unified format:
+The account/device protocol returns closed success documents:
 
 ```json
 {{
-    "code": 200,
-    "message": "Operation successful",
+    "protocol_version": 1,
+    "request_id": "00000000-0000-4000-8000-000000000001",
     "data": {{}}
 }}
 ```
+
+Failures return a stable nonlocalized `error.code`; they never include mailbox
+addresses, OTPs, grants, signing material, provider responses, or stack traces.
 
 ## Environment Information
 
@@ -65,8 +69,8 @@ CLIENT_OPENAPI_TAGS = [
         "description": "Health and safe client configuration interfaces",
     },
     {
-        "name": "client-auth",
-        "description": "Desktop client account authentication interfaces",
+        "name": "account-device-identity",
+        "description": "Passwordless mailbox verification and signed device binding",
     },
 ]
 

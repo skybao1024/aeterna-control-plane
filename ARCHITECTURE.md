@@ -59,6 +59,25 @@ Operator browser -> Backoffice UI -> Backoffice API
   backed by KMS/HSM. Application database credentials must not be able to
   decrypt them by themselves.
 
+## Protocol-v1 identity boundary
+
+The registered desktop identity API is passwordless. An eight-digit mailbox
+challenge issues a ten-minute, one-use, purpose-bound opaque grant. The database
+stores only keyed mailbox lookup values, AES-256-GCM ciphertext, keyed OTP
+verifiers, and grant digests. Legacy generic client password/JWT routes are not
+registered; backoffice authentication remains independent.
+
+The first device can bind immediately exactly once. Later devices remain
+pending until an active device signs the server challenge or until 24 hours
+have elapsed and the proposed device supplies a fresh mailbox grant and fresh
+Ed25519 proof. PostgreSQL row locks, terminal states, and canonical request
+digests serialize approvals, cancellations, expiry, and exact replays.
+
+Signed objects use RFC 8785 JCS and Ed25519. The public desktop repository owns
+the versioned schemas, errors, and fixtures; this service vendors the exact
+release directory and verifies its digest in CI. I09 endpoints cannot carry
+heartbeat, activity, application/window/URL, vault, contact, or recovery data.
+
 ## Domain modules
 
 Product work should converge on these modules:

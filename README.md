@@ -10,11 +10,11 @@ master passwords, emergency recovery codes, or vault data keys.
 
 ## Current status
 
-The repository is a cleaned application foundation, not a production-ready
-control plane. It currently provides Docker orchestration, FastAPI, PostgreSQL,
-Redis, Celery, email adapters, migrations, client authentication scaffolding,
-and an authenticated backoffice shell. Aeterna domain modules still need to be
-implemented and security-reviewed.
+The repository is a security-bounded application foundation, not a
+production-ready control plane. It provides Docker orchestration, FastAPI,
+PostgreSQL, Redis, Celery, email adapters, an authenticated backoffice shell,
+and the protocol-v1 passwordless account/device binding boundary. Heartbeats,
+policy lifecycle, contact delivery, and recovery remain separate later work.
 
 ## Quick start
 
@@ -58,6 +58,9 @@ management uses `pnpm`.
 `./deploy.sh init` copies the root `.env.example` to the ignored root `.env`.
 Replace every example credential before any non-local deployment. Production
 must use TLS, restricted origins, isolated environments, and managed secrets.
+The I09 account identity module accepts explicit synthetic environment keys in
+development and tests only. Production startup fails closed until a separately
+approved KMS/HSM identity-key provider is implemented.
 
 Runtime environment files are confidential. Never commit them or paste their
 values into issues, logs, or AI conversations.

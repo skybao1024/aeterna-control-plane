@@ -20,9 +20,9 @@ class RouteConfig:
 # Client route configuration
 CLIENT_ROUTES = [
     RouteConfig(
-        module_path="app.api.client.v1.auth",
-        prefix=f"{settings.API_V1_STR}/auth",
-        tags=["client-auth"],
+        module_path="app.api.client.v1.aeterna_identity",
+        prefix=f"{settings.API_V1_STR}",
+        tags=["account-device-identity"],
     ),
     RouteConfig(
         module_path="app.api.client.v1.config",
