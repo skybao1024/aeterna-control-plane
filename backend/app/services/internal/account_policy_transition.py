@@ -171,7 +171,10 @@ class AccountPolicyTransitionService:
         await self.hooks.before_policy_lock(operation, account_id)
         policy = await db.scalar(
             select(AccountPolicy)
-            .where(AccountPolicy.account_id == account_id)
+            .where(
+                AccountPolicy.account_id == account_id,
+                AccountPolicy.retired_at.is_(None),
+            )
             .with_for_update()
         )
         if policy is not None:

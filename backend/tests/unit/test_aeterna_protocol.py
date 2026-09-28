@@ -23,8 +23,17 @@ from app.schemas.client.aeterna_protocol import (
     HeartbeatResponse,
 )
 from app.schemas.client.aeterna_recovery import (
+    OwnerRecoveryActionRequest,
+    OwnerRecoveryResponse,
+    OwnerRecoverySecretResponse,
+    OwnerRecoveryStartRequest,
+    OwnerRecoveryVerifyRequest,
     RecoveryRecordActionRequest,
     RecoveryRecordProvisionRequest,
+    RecoveryRotationConfirmRequest,
+    RecoveryRotationProvisionRequest,
+    RecoveryRotationProvisionResponse,
+    RecoveryRotationResponse,
     RecoverySecretResponse,
 )
 from app.services.common.aeterna_security import (
@@ -37,7 +46,7 @@ from app.services.common.aeterna_security import (
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "aeterna-protocol-v1"
 EXPECTED_PUBLIC_RELEASE_DIGEST = (
-    "456335ec6baf6f7161aa715263943427402ff675606fc68db79cb381572ed2e1"
+    "b7b0f41af9023ae7e30b4f21f5fae47976ec9b8cf490b50c8d61d81137abb75f"
 )
 
 
@@ -68,7 +77,7 @@ def make_request(body: bytes, content_type: str = "application/json") -> Request
 
 def test_vendored_public_release_digest_and_every_file_hash_match():
     manifest = load_json("manifest.json")
-    assert manifest["release_tag"] == "protocol-v1.2.0"
+    assert manifest["release_tag"] == "protocol-v1.3.0"
     assert manifest["release_digest"] == EXPECTED_PUBLIC_RELEASE_DIGEST
     for entry in manifest["files"]:
         content = (FIXTURE_ROOT / entry["path"]).read_bytes()
@@ -102,6 +111,22 @@ def test_python_jcs_and_ed25519_match_published_request_and_approval_vectors():
         (
             "fixtures/signatures/recovery-record-confirm.json",
             RecoveryRecordActionRequest,
+        ),
+        (
+            "fixtures/signatures/owner-recovery-start.json",
+            OwnerRecoveryStartRequest,
+        ),
+        (
+            "fixtures/signatures/owner-recovery-action.json",
+            OwnerRecoveryActionRequest,
+        ),
+        (
+            "fixtures/signatures/recovery-rotation-provision.json",
+            RecoveryRotationProvisionRequest,
+        ),
+        (
+            "fixtures/signatures/recovery-rotation-confirm.json",
+            RecoveryRotationConfirmRequest,
         ),
     ]:
         fixture = load_json(fixture_path)
@@ -155,6 +180,21 @@ def test_i10_published_success_responses_match_runtime_models():
     RecoverySecretResponse.model_validate(
         load_json("fixtures/valid/recovery-secret-response.json")
     )
+    OwnerRecoveryResponse.model_validate(
+        load_json("fixtures/valid/owner-recovery-response.json")
+    )
+    OwnerRecoverySecretResponse.model_validate(
+        load_json("fixtures/valid/owner-recovery-secret-response.json")
+    )
+    OwnerRecoveryVerifyRequest.model_validate(
+        load_json("fixtures/valid/owner-recovery-verify-request.json")
+    )
+    RecoveryRotationProvisionResponse.model_validate(
+        load_json("fixtures/valid/recovery-rotation-provision-response.json")
+    )
+    RecoveryRotationResponse.model_validate(
+        load_json("fixtures/valid/recovery-rotation-response.json")
+    )
 
 
 @pytest.mark.asyncio
@@ -198,6 +238,11 @@ async def test_strict_parser_accepts_valid_fixture():
         (
             "fixtures/invalid/recovery-record-provision-forbidden-data.json",
             RecoveryRecordProvisionRequest,
+            "protocol.invalid_request",
+        ),
+        (
+            "fixtures/invalid/owner-recovery-start-forbidden-data.json",
+            OwnerRecoveryStartRequest,
             "protocol.invalid_request",
         ),
     ],
@@ -266,6 +311,11 @@ def test_client_registry_exposes_only_v1_protocol_and_safe_config_routes():
     assert "/api/v1/recovery/claim/start" in paths
     assert "/api/v1/recovery/claim/verify" in paths
     assert "/api/v1/recovery/{recovery_id}/release-secret" in paths
+    assert "/api/v1/recovery/owner/start" in paths
+    assert "/api/v1/recovery/owner/verify" in paths
+    assert "/api/v1/recovery/owner/{owner_recovery_id}/action" in paths
+    assert "/api/v1/recovery/rotations/provision" in paths
+    assert "/api/v1/recovery/rotations/{rotation_id}/confirm" in paths
     assert "/api/v1/auth/register" not in paths
     assert "/api/v1/auth/login" not in paths
 

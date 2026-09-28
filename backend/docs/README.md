@@ -30,6 +30,7 @@ public client protocol.
 - [I11 warning/grace state machine results](./development/i11-state-machine-results.md)
 - [I12 contacts and email notification results](./development/i12-notification-results.md)
 - [I13 delayed recovery implementation results](./development/i13-delayed-recovery-results.md)
+- [I14 Owner recovery and rotation results](./development/i14-owner-recovery-rotation-results.md)
 
 ## Security
 

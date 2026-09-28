@@ -175,6 +175,7 @@ async def materialize_recovery_grants() -> dict[str, int]:
                     select(AccountPolicy.account_id).where(
                         AccountPolicy.state == AccountPolicyState.RELEASED.value,
                         AccountPolicy.account_id.is_not(None),
+                        AccountPolicy.retired_at.is_(None),
                     )
                 )
             )

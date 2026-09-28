@@ -410,3 +410,49 @@ async def test_heartbeat_device_policy_and_outbox_roll_back_together():
     assert device.last_seen_at is None
     assert policy_count == 0
     assert outbox_count == 0
+
+
+async def test_released_epoch_heartbeat_updates_presence_without_policy_mutation():
+    now, account_id, device_ids, keys = await seed_account(1)
+    released_at = now - timedelta(days=1)
+    policy_id = uuid.uuid4()
+    session_factory = get_session_local()
+    async with session_factory.begin() as db:
+        db.add(
+            AccountPolicy(
+                id=policy_id,
+                account_id=account_id,
+                epoch=1,
+                state="RELEASED",
+                version=7,
+                inactivity_window_seconds=30 * 24 * 60 * 60,
+                warning_window_seconds=7 * 24 * 60 * 60,
+                grace_window_seconds=7 * 24 * 60 * 60,
+                last_activity_at=released_at,
+                due_at=released_at,
+                state_changed_at=released_at,
+                released_at=released_at,
+            )
+        )
+    clock = MutableClock(now)
+    service = AeternaHeartbeatService(clock=clock.now)
+    payload, document = heartbeat_document(
+        account_id, device_ids[0], keys[0], sequence=1
+    )
+    async with session_factory() as db:
+        accepted = await service.submit_heartbeat(db, payload, document)
+    assert accepted["accepted_sequence"] == 1
+    async with session_factory() as db:
+        policy = await db.get(AccountPolicy, policy_id)
+        device = await db.get(AeternaDevice, device_ids[0])
+        outbox_count = await db.scalar(
+            select(func.count(AccountPolicyOutboxEvent.id)).where(
+                AccountPolicyOutboxEvent.account_policy_id == policy_id
+            )
+        )
+    assert device.last_seen_at == now
+    assert policy.state == "RELEASED"
+    assert policy.version == 7
+    assert policy.last_activity_at == released_at
+    assert policy.due_at == released_at
+    assert outbox_count == 0

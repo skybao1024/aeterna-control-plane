@@ -216,7 +216,8 @@ class AeternaNotificationService:
         if contact.disclosure_mode == "PRIVATE_UNTIL_RELEASE":
             policy_state = await db.scalar(
                 select(AccountPolicy.state).where(
-                    AccountPolicy.account_id == account.id
+                    AccountPolicy.account_id == account.id,
+                    AccountPolicy.retired_at.is_(None),
                 )
             )
             if policy_state != AccountPolicyState.RELEASED.value:

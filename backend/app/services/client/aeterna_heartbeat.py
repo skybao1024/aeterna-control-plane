@@ -11,11 +11,17 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions.aeterna_protocol import AeternaProtocolException
+from app.models.account_policy import AccountPolicyState
 from app.models.aeterna_identity import (
     AeternaAccount,
     AeternaDevice,
     AeternaProtocolIdempotency,
     AeternaSecurityAudit,
+)
+from app.models.aeterna_recovery import (
+    AeternaRecoveryAudit,
+    AeternaRecoveryRotation,
+    AeternaRecoveryRotationDevice,
 )
 from app.schemas.client.aeterna_protocol import (
     DeviceStatusChangeRequest,
@@ -128,18 +134,23 @@ class AeternaHeartbeatService:
                     retry_after_seconds=min(retry, 86_400),
                 )
 
-        policy_result = await self.policy_service.record_locked_account_heartbeat(
-            db=db,
-            account_id=account_id,
-            policy=policy,
-            heartbeat_id=request_id,
-            received_at=now,
+        presence_only = policy is not None and (
+            policy.state == AccountPolicyState.RELEASED.value
+            or device.policy_epoch != account.current_policy_epoch
         )
-        if policy_result.outcome in {
-            TransitionOutcome.RELEASED_REJECTED,
-            TransitionOutcome.TERMINAL_REJECTED,
-        }:
-            raise AeternaProtocolException(403, "device.not_active", request_id)
+        if not presence_only:
+            policy_result = await self.policy_service.record_locked_account_heartbeat(
+                db=db,
+                account_id=account_id,
+                policy=policy,
+                heartbeat_id=request_id,
+                received_at=now,
+            )
+            if policy_result.outcome in {
+                TransitionOutcome.RELEASED_REJECTED,
+                TransitionOutcome.TERMINAL_REJECTED,
+            }:
+                raise AeternaProtocolException(403, "device.not_active", request_id)
 
         device.last_sequence = signed.sequence
         device.last_seen_at = now
@@ -214,7 +225,56 @@ class AeternaHeartbeatService:
         target.status = target_status
         if target_status == "revoked":
             target.revoked_at = now
+        rotation_rows = list(
+            (
+                await db.execute(
+                    select(AeternaRecoveryRotationDevice, AeternaRecoveryRotation)
+                    .join(
+                        AeternaRecoveryRotation,
+                        AeternaRecoveryRotation.id
+                        == AeternaRecoveryRotationDevice.rotation_id,
+                    )
+                    .where(
+                        AeternaRecoveryRotation.account_id == account_id,
+                        AeternaRecoveryRotation.state.in_({"preparing", "active"}),
+                        AeternaRecoveryRotationDevice.device_id == target.id,
+                        AeternaRecoveryRotationDevice.state.in_(
+                            {"pending", "not_enrolled"}
+                        ),
+                    )
+                    .with_for_update()
+                )
+            ).all()
+        )
+        for rotation_row, _rotation in rotation_rows:
+            rotation_row.state = "excluded"
+            rotation_row.updated_at = now
         await db.flush()
+        for _rotation_row, rotation in rotation_rows:
+            remaining = await db.scalar(
+                select(func.count(AeternaRecoveryRotationDevice.id)).where(
+                    AeternaRecoveryRotationDevice.rotation_id == rotation.id,
+                    AeternaRecoveryRotationDevice.state.in_(
+                        {"pending", "not_enrolled"}
+                    ),
+                )
+            )
+            if (remaining or 0) == 0:
+                rotation.state = "complete"
+                rotation.completed_at = now
+                rotation.updated_at = now
+                db.add(
+                    AeternaRecoveryAudit(
+                        id=self.uuid_factory(),
+                        account_id=account_id,
+                        recovery_id=rotation.recovery_id,
+                        contact_id=None,
+                        grant_id=None,
+                        request_id=uuid.UUID(request_id),
+                        event_type="rotation.completed",
+                        status="accepted",
+                    )
+                )
         await self._recompute_account_activity(db, account)
         data = {
             "account_id": str(account_id),
@@ -265,6 +325,7 @@ class AeternaHeartbeatService:
             select(func.max(AeternaDevice.last_seen_at)).where(
                 AeternaDevice.account_id == account.id,
                 AeternaDevice.status == "active",
+                AeternaDevice.policy_epoch == account.current_policy_epoch,
             )
         )
 

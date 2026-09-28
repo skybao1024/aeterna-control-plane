@@ -18,18 +18,26 @@ from app.models.account_policy import AccountPolicy, AccountPolicyState
 from app.models.aeterna_identity import AeternaAccount, AeternaDevice
 from app.models.aeterna_notification import AeternaContact, AeternaEmailOutboxEvent
 from app.models.aeterna_recovery import (
+    AeternaOwnerRecoveryRequest,
     AeternaRecoveryAudit,
     AeternaRecoveryClaimLink,
     AeternaRecoveryClaimToken,
     AeternaRecoveryGrant,
     AeternaRecoveryOtpChallenge,
     AeternaRecoveryRecord,
+    AeternaRecoveryRotation,
+    AeternaRecoveryRotationDevice,
 )
 from app.schemas.client.aeterna_recovery import (
+    OwnerRecoveryActionRequest,
+    OwnerRecoveryStartRequest,
+    OwnerRecoveryVerifyRequest,
     RecoveryClaimStartRequest,
     RecoveryClaimVerifyRequest,
     RecoveryRecordActionRequest,
     RecoveryRecordProvisionRequest,
+    RecoveryRotationConfirmRequest,
+    RecoveryRotationProvisionRequest,
     RecoverySecretRequest,
 )
 from app.services.common.aeterna_recovery_key import (
@@ -61,6 +69,9 @@ OTP_LIFETIME = timedelta(minutes=10)
 OTP_RESEND = timedelta(seconds=60)
 CLAIM_TOKEN_LIFETIME = timedelta(minutes=5)
 MAX_OTP_ATTEMPTS = 5
+RECENT_HEARTBEAT = timedelta(minutes=15)
+OWNER_RECOVERY_COOLDOWN = timedelta(hours=24)
+OWNER_RECOVERY_RELEASE_WINDOW = timedelta(hours=24)
 
 
 def utc_now() -> datetime:
@@ -171,6 +182,8 @@ class AeternaRecoveryService:
                 account_id=account.id,
                 device_id=device.id,
                 vault_id=vault_id,
+                policy_epoch=account.current_policy_epoch,
+                recovery_generation=account.current_recovery_generation,
                 state="pending_confirmation",
                 encrypted_srs=envelope.ciphertext,
                 kms_provider=(
@@ -294,7 +307,10 @@ class AeternaRecoveryService:
         )
         policy = await db.scalar(
             select(AccountPolicy)
-            .where(AccountPolicy.account_id == account_id)
+            .where(
+                AccountPolicy.account_id == account_id,
+                AccountPolicy.retired_at.is_(None),
+            )
             .with_for_update()
         )
         if (
@@ -311,6 +327,10 @@ class AeternaRecoveryService:
                     .where(
                         AeternaRecoveryRecord.account_id == account_id,
                         AeternaRecoveryRecord.state == "sealed",
+                        AeternaRecoveryRecord.policy_epoch
+                        == account.current_policy_epoch,
+                        AeternaRecoveryRecord.recovery_generation
+                        == account.current_recovery_generation,
                     )
                     .with_for_update()
                 )
@@ -417,11 +437,6 @@ class AeternaRecoveryService:
             .where(AeternaAccount.id == relation.account_id)
             .with_for_update()
         )
-        policy = await db.scalar(
-            select(AccountPolicy)
-            .where(AccountPolicy.account_id == relation.account_id)
-            .with_for_update()
-        )
         grant = await db.scalar(
             select(AeternaRecoveryGrant)
             .where(AeternaRecoveryGrant.id == relation.grant_id)
@@ -443,6 +458,18 @@ class AeternaRecoveryService:
                 .with_for_update()
             )
             if grant is not None
+            else None
+        )
+        policy = (
+            await db.scalar(
+                select(AccountPolicy)
+                .where(
+                    AccountPolicy.account_id == relation.account_id,
+                    AccountPolicy.epoch == record.policy_epoch,
+                )
+                .with_for_update()
+            )
+            if record is not None
             else None
         )
         link = await db.scalar(
@@ -580,11 +607,6 @@ class AeternaRecoveryService:
             .where(AeternaAccount.id == relation.account_id)
             .with_for_update()
         )
-        policy = await db.scalar(
-            select(AccountPolicy)
-            .where(AccountPolicy.account_id == relation.account_id)
-            .with_for_update()
-        )
         contact = await db.scalar(
             select(AeternaContact)
             .where(AeternaContact.id == relation.contact_id)
@@ -594,6 +616,18 @@ class AeternaRecoveryService:
             select(AeternaRecoveryRecord)
             .where(AeternaRecoveryRecord.id == relation.recovery_id)
             .with_for_update()
+        )
+        policy = (
+            await db.scalar(
+                select(AccountPolicy)
+                .where(
+                    AccountPolicy.account_id == relation.account_id,
+                    AccountPolicy.epoch == record.policy_epoch,
+                )
+                .with_for_update()
+            )
+            if record is not None
+            else None
         )
         grant = await db.scalar(
             select(AeternaRecoveryGrant)
@@ -741,15 +775,22 @@ class AeternaRecoveryService:
             .where(AeternaAccount.id == relation.account_id)
             .with_for_update()
         )
-        policy = await db.scalar(
-            select(AccountPolicy)
-            .where(AccountPolicy.account_id == relation.account_id)
-            .with_for_update()
-        )
         record = await db.scalar(
             select(AeternaRecoveryRecord)
             .where(AeternaRecoveryRecord.id == relation.recovery_id)
             .with_for_update()
+        )
+        policy = (
+            await db.scalar(
+                select(AccountPolicy)
+                .where(
+                    AccountPolicy.account_id == relation.account_id,
+                    AccountPolicy.epoch == record.policy_epoch,
+                )
+                .with_for_update()
+            )
+            if record is not None
+            else None
         )
         grant = await db.scalar(
             select(AeternaRecoveryGrant)
@@ -865,7 +906,10 @@ class AeternaRecoveryService:
             return {
                 "account_id": str(record.account_id),
                 "device_id": str(record.device_id),
+                "policy_epoch": record.policy_epoch,
+                "recovery_generation": record.recovery_generation,
                 "recovery_id": str(record.id),
+                "rekey_required": True,
                 "srs": base64.urlsafe_b64encode(bytes(plaintext))
                 .rstrip(b"=")
                 .decode("ascii"),
@@ -874,6 +918,1026 @@ class AeternaRecoveryService:
             }
         finally:
             plaintext[:] = b"\x00" * len(plaintext)
+
+    async def start_owner_recovery(
+        self,
+        db: AsyncSession,
+        payload: OwnerRecoveryStartRequest,
+        document: dict[str, Any],
+    ) -> dict[str, Any]:
+        signed = payload.signed
+        account_id = uuid.UUID(signed.account_id)
+        device_id = uuid.UUID(signed.device_id)
+        account, policy, device = await self._authorize_device(
+            db,
+            account_id,
+            device_id,
+            signed.request_id,
+            document["signed"],
+            payload.signature,
+        )
+        now = self._now()
+        digest = request_digest(document)
+        replay = await db.scalar(
+            select(AeternaOwnerRecoveryRequest).where(
+                AeternaOwnerRecoveryRequest.start_request_id
+                == uuid.UUID(signed.request_id)
+            )
+        )
+        if replay is not None:
+            if replay.account_id != account.id or not secrets.compare_digest(
+                replay.start_request_digest, digest
+            ):
+                raise AeternaProtocolException(
+                    409, "request.idempotency_conflict", signed.request_id
+                )
+            await db.rollback()
+            return self._owner_recovery_data(replay, now)
+        wrapper_digest = decode_base64url(signed.wrapper_digest, 32)
+        record = await db.scalar(
+            select(AeternaRecoveryRecord)
+            .where(
+                AeternaRecoveryRecord.id == uuid.UUID(signed.recovery_id),
+                AeternaRecoveryRecord.account_id == account.id,
+                AeternaRecoveryRecord.device_id == device.id,
+                AeternaRecoveryRecord.vault_id == uuid.UUID(signed.vault_id),
+                AeternaRecoveryRecord.policy_epoch == signed.policy_epoch,
+                AeternaRecoveryRecord.recovery_generation == signed.recovery_generation,
+                AeternaRecoveryRecord.state == "sealed",
+            )
+            .with_for_update()
+        )
+        if (
+            record is None
+            or record.wrapper_digest is None
+            or not secrets.compare_digest(record.wrapper_digest, wrapper_digest)
+            or signed.policy_epoch != account.current_policy_epoch
+            or signed.recovery_generation != account.current_recovery_generation
+            or policy.state
+            in {
+                AccountPolicyState.DISABLED.value,
+                AccountPolicyState.DELETED.value,
+            }
+            or device.last_seen_at is None
+            or device.last_seen_at < now - RECENT_HEARTBEAT
+        ):
+            raise AeternaProtocolException(
+                409, "recovery.owner_unavailable", signed.request_id
+            )
+        live = await db.scalar(
+            select(AeternaOwnerRecoveryRequest)
+            .where(
+                AeternaOwnerRecoveryRequest.account_id == account.id,
+                AeternaOwnerRecoveryRequest.state.in_(
+                    {"pending_email", "cooling_down", "material_released"}
+                ),
+            )
+            .with_for_update()
+        )
+        if live is not None:
+            raise AeternaProtocolException(
+                409, "recovery.owner_unavailable", signed.request_id
+            )
+        keys = self._identity_keys(signed.request_id)
+        owner_recovery_id = self.uuid_factory()
+        challenge_id = self.uuid_factory()
+        code = derive_recovery_otp(keys, challenge_id)
+        request = AeternaOwnerRecoveryRequest(
+            id=owner_recovery_id,
+            account_id=account.id,
+            device_id=device.id,
+            recovery_id=record.id,
+            vault_id=record.vault_id,
+            policy_epoch=record.policy_epoch,
+            recovery_generation=record.recovery_generation,
+            rekey_required=policy.state == AccountPolicyState.RELEASED.value,
+            wrapper_digest=record.wrapper_digest,
+            state="pending_email",
+            start_request_id=uuid.UUID(signed.request_id),
+            start_request_digest=digest,
+            challenge_id=challenge_id,
+            otp_verifier=otp_verifier(keys, challenge_id, "owner-recovery", code),
+            otp_key_version=keys.version,
+            attempt_count=0,
+            challenge_expires_at=now + OTP_LIFETIME,
+            expires_at=now + OTP_LIFETIME,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(request)
+        await db.flush()
+        db.add(
+            self._email_event(
+                account_id=account.id,
+                contact_id=None,
+                event_type="owner-recovery-otp",
+                idempotency_key=f"owner-recovery-otp:{request.id}",
+                now=now,
+                owner_recovery_id=request.id,
+            )
+        )
+        self._audit(
+            db,
+            account.id,
+            record.id,
+            None,
+            None,
+            uuid.UUID(signed.request_id),
+            "owner.started",
+        )
+        await db.commit()
+        return self._owner_recovery_data(request, now)
+
+    async def verify_owner_recovery(
+        self, db: AsyncSession, payload: OwnerRecoveryVerifyRequest
+    ) -> dict[str, Any]:
+        request = await db.scalar(
+            select(AeternaOwnerRecoveryRequest)
+            .where(
+                AeternaOwnerRecoveryRequest.id == uuid.UUID(payload.owner_recovery_id),
+                AeternaOwnerRecoveryRequest.challenge_id
+                == uuid.UUID(payload.challenge_id),
+            )
+            .with_for_update()
+        )
+        if request is None:
+            raise AeternaProtocolException(
+                400, "recovery.otp_invalid", payload.request_id
+            )
+        now = self._now()
+        keys = self._identity_keys(payload.request_id)
+        valid = (
+            request.state == "pending_email"
+            and request.challenge_expires_at > now
+            and request.attempt_count < MAX_OTP_ATTEMPTS
+            and verify_otp(
+                keys,
+                request.challenge_id,
+                "owner-recovery",
+                payload.code,
+                request.otp_verifier,
+            )
+        )
+        if not valid:
+            request.attempt_count = min(MAX_OTP_ATTEMPTS, request.attempt_count + 1)
+            if request.challenge_expires_at <= now:
+                request.state = "expired"
+            request.updated_at = now
+            await db.commit()
+            raise AeternaProtocolException(
+                429 if request.attempt_count >= MAX_OTP_ATTEMPTS else 400,
+                (
+                    "recovery.otp_attempts_exhausted"
+                    if request.attempt_count >= MAX_OTP_ATTEMPTS
+                    else "recovery.otp_invalid"
+                ),
+                payload.request_id,
+            )
+        request.state = "cooling_down"
+        request.verified_at = now
+        request.ready_at = (
+            now if request.rekey_required else now + OWNER_RECOVERY_COOLDOWN
+        )
+        request.expires_at = request.ready_at + OWNER_RECOVERY_RELEASE_WINDOW
+        request.updated_at = now
+        db.add(
+            self._email_event(
+                account_id=request.account_id,
+                contact_id=None,
+                event_type=(
+                    "owner-recovery-successor-authorized"
+                    if request.rekey_required
+                    else "owner-recovery-cooling-down"
+                ),
+                idempotency_key=(
+                    f"owner-recovery-successor-authorized:{request.id}"
+                    if request.rekey_required
+                    else f"owner-recovery-cooling-down:{request.id}"
+                ),
+                now=now,
+                owner_recovery_id=request.id,
+            )
+        )
+        self._audit(
+            db,
+            request.account_id,
+            request.recovery_id,
+            None,
+            None,
+            uuid.UUID(payload.request_id),
+            "owner.verified",
+        )
+        await db.commit()
+        return self._owner_recovery_data(request, now)
+
+    async def act_on_owner_recovery(
+        self,
+        db: AsyncSession,
+        payload: OwnerRecoveryActionRequest,
+        document: dict[str, Any],
+    ) -> dict[str, Any]:
+        signed = payload.signed
+        account_id = uuid.UUID(signed.account_id)
+        device_id = uuid.UUID(signed.device_id)
+        account, policy, device = await self._authorize_device(
+            db,
+            account_id,
+            device_id,
+            signed.request_id,
+            document["signed"],
+            payload.signature,
+        )
+        request = await db.scalar(
+            select(AeternaOwnerRecoveryRequest)
+            .where(
+                AeternaOwnerRecoveryRequest.id == uuid.UUID(signed.owner_recovery_id),
+                AeternaOwnerRecoveryRequest.account_id == account.id,
+            )
+            .with_for_update()
+        )
+        now = self._now()
+        if request is None:
+            raise AeternaProtocolException(
+                409, "recovery.owner_unavailable", signed.request_id
+            )
+        if signed.action in {"release", "complete"}:
+            wrapper_digest = decode_base64url(signed.wrapper_digest, 32)
+            if (
+                request.recovery_id != uuid.UUID(signed.recovery_id)
+                or request.vault_id != uuid.UUID(signed.vault_id)
+                or not secrets.compare_digest(request.wrapper_digest, wrapper_digest)
+            ):
+                raise AeternaProtocolException(
+                    409, "recovery.owner_unavailable", signed.request_id
+                )
+        if request.expires_at <= now and request.state not in {
+            "completed",
+            "cancelled",
+            "expired",
+        }:
+            request.state = "expired"
+            request.updated_at = now
+            await db.commit()
+        superseded_by_release = not request.rekey_required and (
+            policy.state == AccountPolicyState.RELEASED.value
+            or account.current_policy_epoch != request.policy_epoch
+        )
+        if superseded_by_release and request.state in {
+            "pending_email",
+            "cooling_down",
+            "material_released",
+        }:
+            request.state = "cancelled"
+            request.cancelled_at = now
+            request.updated_at = now
+            self._audit(
+                db,
+                account.id,
+                request.recovery_id,
+                None,
+                None,
+                uuid.UUID(signed.request_id),
+                "owner.cancelled",
+            )
+            db.add(
+                self._email_event(
+                    account_id=account.id,
+                    contact_id=None,
+                    event_type="owner-recovery-cancelled",
+                    idempotency_key=f"owner-recovery-cancelled:{request.id}",
+                    now=now,
+                    owner_recovery_id=request.id,
+                )
+            )
+            await db.commit()
+            if signed.action in {"cancel", "status"}:
+                return self._owner_recovery_data(request, now)
+            raise AeternaProtocolException(
+                409, "recovery.rekey_required", signed.request_id
+            )
+        if signed.action == "cancel":
+            if request.state in {"pending_email", "cooling_down"}:
+                request.state = "cancelled"
+                request.cancelled_at = now
+                request.updated_at = now
+                self._audit(
+                    db,
+                    account.id,
+                    request.recovery_id,
+                    None,
+                    None,
+                    uuid.UUID(signed.request_id),
+                    "owner.cancelled",
+                )
+                db.add(
+                    self._email_event(
+                        account_id=account.id,
+                        contact_id=None,
+                        event_type="owner-recovery-cancelled",
+                        idempotency_key=f"owner-recovery-cancelled:{request.id}",
+                        now=now,
+                        owner_recovery_id=request.id,
+                    )
+                )
+                await db.commit()
+            else:
+                data = self._owner_recovery_data(request, now)
+                await db.rollback()
+                return data
+            return self._owner_recovery_data(request, now)
+        if signed.action == "status":
+            data = self._owner_recovery_data(request, now)
+            await db.rollback()
+            return data
+        if signed.action == "complete":
+            replacement = await db.scalar(
+                select(AeternaRecoveryRecord).where(
+                    AeternaRecoveryRecord.account_id == account.id,
+                    AeternaRecoveryRecord.device_id == request.device_id,
+                    AeternaRecoveryRecord.vault_id == request.vault_id,
+                    AeternaRecoveryRecord.policy_epoch == request.policy_epoch,
+                    AeternaRecoveryRecord.recovery_generation
+                    > request.recovery_generation,
+                    AeternaRecoveryRecord.state == "sealed",
+                )
+            )
+            if request.state != "material_released" or replacement is None:
+                raise AeternaProtocolException(
+                    409, "recovery.rekey_required", signed.request_id
+                )
+            request.state = "completed"
+            request.completed_at = now
+            request.updated_at = now
+            self._audit(
+                db,
+                account.id,
+                request.recovery_id,
+                None,
+                None,
+                uuid.UUID(signed.request_id),
+                "owner.completed",
+            )
+            await db.commit()
+            return self._owner_recovery_data(request, now)
+        if request.rekey_required:
+            raise AeternaProtocolException(
+                409, "recovery.rekey_required", signed.request_id
+            )
+        if (
+            request.device_id != device.id
+            or device.last_seen_at is None
+            or device.last_seen_at < now - RECENT_HEARTBEAT
+            or request.state not in {"cooling_down", "material_released"}
+            or request.ready_at is None
+            or request.ready_at > now
+            or request.expires_at <= now
+        ):
+            raise AeternaProtocolException(
+                409, "recovery.owner_not_ready", signed.request_id
+            )
+        record = await db.scalar(
+            select(AeternaRecoveryRecord)
+            .where(
+                AeternaRecoveryRecord.id == request.recovery_id,
+                AeternaRecoveryRecord.state == "sealed",
+                AeternaRecoveryRecord.policy_epoch == request.policy_epoch,
+                AeternaRecoveryRecord.recovery_generation
+                == request.recovery_generation,
+            )
+            .with_for_update()
+        )
+        if record is None:
+            raise AeternaProtocolException(
+                409, "recovery.owner_unavailable", signed.request_id
+            )
+        context = recovery_encryption_context(
+            environment=settings.ENV,
+            protocol_version=1,
+            account_id=record.account_id,
+            device_id=record.device_id,
+            vault_id=record.vault_id,
+            recovery_id=record.id,
+        )
+        try:
+            plaintext = self.claim_provider().decrypt_srs(
+                record.encrypted_srs, record.kms_key_arn, context
+            )
+        except RecoveryKeyUnavailable:
+            raise AeternaProtocolException(
+                503, "recovery.material_unavailable", signed.request_id
+            ) from None
+        try:
+            if request.state == "cooling_down":
+                request.state = "material_released"
+                request.released_at = now
+                request.updated_at = now
+                self._audit(
+                    db,
+                    account.id,
+                    request.recovery_id,
+                    None,
+                    None,
+                    uuid.UUID(signed.request_id),
+                    "owner.released",
+                )
+                db.add(
+                    self._email_event(
+                        account_id=account.id,
+                        contact_id=None,
+                        event_type="owner-recovery-material-released",
+                        idempotency_key=f"owner-recovery-material-released:{request.id}",
+                        now=now,
+                        owner_recovery_id=request.id,
+                    )
+                )
+                await db.commit()
+            return {
+                "account_id": str(account.id),
+                "device_id": str(device.id),
+                "owner_recovery_id": str(request.id),
+                "policy_epoch": request.policy_epoch,
+                "recovery_generation": request.recovery_generation,
+                "recovery_id": str(record.id),
+                "rekey_required": False,
+                "srs": encode_base64url(bytes(plaintext)),
+                "vault_id": str(record.vault_id),
+                "wrapper_digest": encode_base64url(record.wrapper_digest),
+            }
+        finally:
+            plaintext[:] = b"\x00" * len(plaintext)
+
+    async def provision_rotation(
+        self,
+        db: AsyncSession,
+        payload: RecoveryRotationProvisionRequest,
+        document: dict[str, Any],
+    ) -> dict[str, Any]:
+        signed = payload.signed
+        account_id = uuid.UUID(signed.account_id)
+        device_id = uuid.UUID(signed.device_id)
+        account, policy, device = await self._authorize_device(
+            db,
+            account_id,
+            device_id,
+            signed.request_id,
+            document["signed"],
+            payload.signature,
+        )
+        now = self._now()
+        digest = request_digest(document)
+        replay = await db.scalar(
+            select(AeternaRecoveryRecord).where(
+                AeternaRecoveryRecord.provision_request_id
+                == uuid.UUID(signed.request_id)
+            )
+        )
+        if replay is not None:
+            if replay.account_id != account.id or not secrets.compare_digest(
+                replay.provision_request_digest, digest
+            ):
+                raise AeternaProtocolException(
+                    409, "request.idempotency_conflict", signed.request_id
+                )
+            raise AeternaProtocolException(
+                409, "recovery.provision_retry_required", signed.request_id
+            )
+
+        rotation_id = uuid.UUID(signed.rotation_id)
+        recovery_id = uuid.UUID(signed.recovery_id)
+        vault_id = uuid.UUID(signed.vault_id)
+        owner_recovery_id = (
+            uuid.UUID(signed.owner_recovery_id)
+            if signed.owner_recovery_id is not None
+            else None
+        )
+        rotation = await db.scalar(
+            select(AeternaRecoveryRotation)
+            .where(
+                AeternaRecoveryRotation.id == rotation_id,
+                AeternaRecoveryRotation.account_id == account.id,
+            )
+            .with_for_update()
+        )
+        row = None
+        new_rotation_rows: list[AeternaRecoveryRotationDevice] = []
+        if rotation is None:
+            if (
+                signed.source_policy_epoch != account.current_policy_epoch
+                or signed.source_generation != account.current_recovery_generation
+                or signed.target_generation != signed.source_generation + 1
+                or (
+                    signed.kind == "erc_rotation"
+                    and (
+                        signed.target_policy_epoch != signed.source_policy_epoch
+                        or policy.state == AccountPolicyState.RELEASED.value
+                    )
+                )
+                or (
+                    signed.kind == "post_compromise"
+                    and (
+                        signed.target_policy_epoch != signed.source_policy_epoch + 1
+                        or policy.state != AccountPolicyState.RELEASED.value
+                    )
+                )
+            ):
+                raise AeternaProtocolException(
+                    409, "recovery.generation_mismatch", signed.request_id
+                )
+            live = await db.scalar(
+                select(AeternaRecoveryRotation)
+                .where(
+                    AeternaRecoveryRotation.account_id == account.id,
+                    AeternaRecoveryRotation.state.in_({"preparing", "active"}),
+                )
+                .with_for_update()
+            )
+            if live is not None:
+                if live.expires_at > now:
+                    raise AeternaProtocolException(
+                        409, "recovery.rotation_unavailable", signed.request_id
+                    )
+                live.state = "cancelled"
+                live.updated_at = now
+                await db.flush()
+            old_record = await db.scalar(
+                select(AeternaRecoveryRecord)
+                .where(
+                    AeternaRecoveryRecord.account_id == account.id,
+                    AeternaRecoveryRecord.device_id == device.id,
+                    AeternaRecoveryRecord.vault_id == vault_id,
+                    AeternaRecoveryRecord.policy_epoch == signed.source_policy_epoch,
+                    AeternaRecoveryRecord.recovery_generation
+                    == signed.source_generation,
+                    AeternaRecoveryRecord.state == "sealed",
+                )
+                .with_for_update()
+            )
+            if old_record is None or old_record.id == recovery_id:
+                raise AeternaProtocolException(
+                    409, "recovery.rotation_unavailable", signed.request_id
+                )
+            if signed.kind == "post_compromise":
+                owner_request = await db.scalar(
+                    select(AeternaOwnerRecoveryRequest)
+                    .where(
+                        AeternaOwnerRecoveryRequest.id == owner_recovery_id,
+                        AeternaOwnerRecoveryRequest.account_id == account.id,
+                        AeternaOwnerRecoveryRequest.device_id == device.id,
+                        AeternaOwnerRecoveryRequest.recovery_id == old_record.id,
+                        AeternaOwnerRecoveryRequest.vault_id == vault_id,
+                        AeternaOwnerRecoveryRequest.policy_epoch
+                        == signed.source_policy_epoch,
+                        AeternaOwnerRecoveryRequest.recovery_generation
+                        == signed.source_generation,
+                        AeternaOwnerRecoveryRequest.rekey_required.is_(True),
+                        AeternaOwnerRecoveryRequest.state == "cooling_down",
+                        AeternaOwnerRecoveryRequest.ready_at <= now,
+                        AeternaOwnerRecoveryRequest.expires_at > now,
+                    )
+                    .with_for_update()
+                )
+                if owner_request is None:
+                    raise AeternaProtocolException(
+                        409, "recovery.owner_unavailable", signed.request_id
+                    )
+            rotation = AeternaRecoveryRotation(
+                id=rotation_id,
+                account_id=account.id,
+                initiating_device_id=device.id,
+                recovery_id=recovery_id,
+                owner_recovery_id=owner_recovery_id,
+                vault_id=vault_id,
+                kind=signed.kind,
+                state="preparing",
+                source_policy_epoch=signed.source_policy_epoch,
+                target_policy_epoch=signed.target_policy_epoch,
+                source_generation=signed.source_generation,
+                target_generation=signed.target_generation,
+                provision_request_id=uuid.UUID(signed.request_id),
+                expires_at=now + PROVISION_LIFETIME,
+                created_at=now,
+                updated_at=now,
+            )
+            devices = list(
+                (
+                    await db.scalars(
+                        select(AeternaDevice).where(
+                            AeternaDevice.account_id == account.id,
+                            AeternaDevice.status == "active",
+                        )
+                    )
+                ).all()
+            )
+            for active_device in devices:
+                has_current_record = await db.scalar(
+                    select(func.count(AeternaRecoveryRecord.id)).where(
+                        AeternaRecoveryRecord.account_id == account.id,
+                        AeternaRecoveryRecord.device_id == active_device.id,
+                        AeternaRecoveryRecord.policy_epoch
+                        == rotation.source_policy_epoch,
+                        AeternaRecoveryRecord.recovery_generation
+                        == rotation.source_generation,
+                        AeternaRecoveryRecord.state == "sealed",
+                    )
+                )
+                candidate = AeternaRecoveryRotationDevice(
+                    id=self.uuid_factory(),
+                    rotation_id=rotation.id,
+                    device_id=active_device.id,
+                    recovery_id=(
+                        recovery_id if active_device.id == device.id else None
+                    ),
+                    state=(
+                        "pending"
+                        if rotation.kind == "post_compromise"
+                        or (has_current_record or 0) > 0
+                        else "not_enrolled"
+                    ),
+                    created_at=now,
+                    updated_at=now,
+                )
+                new_rotation_rows.append(candidate)
+                if active_device.id == device.id:
+                    row = candidate
+            if row is None:
+                raise AeternaProtocolException(
+                    409, "recovery.rotation_unavailable", signed.request_id
+                )
+        else:
+            if (
+                rotation.state != "active"
+                or rotation.expires_at <= now
+                or rotation.kind != signed.kind
+                or rotation.owner_recovery_id != owner_recovery_id
+                or rotation.source_policy_epoch != signed.source_policy_epoch
+                or rotation.target_policy_epoch != signed.target_policy_epoch
+                or rotation.source_generation != signed.source_generation
+                or rotation.target_generation != signed.target_generation
+            ):
+                raise AeternaProtocolException(
+                    409, "recovery.rotation_unavailable", signed.request_id
+                )
+            row = await db.scalar(
+                select(AeternaRecoveryRotationDevice)
+                .where(
+                    AeternaRecoveryRotationDevice.rotation_id == rotation.id,
+                    AeternaRecoveryRotationDevice.device_id == device.id,
+                )
+                .with_for_update()
+            )
+            if row is None or row.state not in {"pending", "not_enrolled"}:
+                raise AeternaProtocolException(
+                    409, "recovery.rotation_unavailable", signed.request_id
+                )
+            if row.recovery_id is not None:
+                pending_record = await db.get(AeternaRecoveryRecord, row.recovery_id)
+                if (
+                    pending_record is None
+                    or pending_record.state != "pending_confirmation"
+                    or pending_record.expires_at > now
+                ):
+                    raise AeternaProtocolException(
+                        409, "recovery.provision_retry_required", signed.request_id
+                    )
+                pending_record.state = "expired"
+                pending_record.abandoned_at = now
+                pending_record.updated_at = now
+                row.recovery_id = None
+                await db.flush()
+            row.recovery_id = recovery_id
+            row.updated_at = now
+
+        context = recovery_encryption_context(
+            environment=settings.ENV,
+            protocol_version=1,
+            account_id=account.id,
+            device_id=device.id,
+            vault_id=vault_id,
+            recovery_id=recovery_id,
+        )
+        try:
+            envelope = self.provision_provider().generate_srs(context)
+        except RecoveryKeyUnavailable:
+            raise AeternaProtocolException(
+                503, "recovery.material_unavailable", signed.request_id
+            ) from None
+        try:
+            record = AeternaRecoveryRecord(
+                id=recovery_id,
+                account_id=account.id,
+                device_id=device.id,
+                vault_id=vault_id,
+                policy_epoch=rotation.target_policy_epoch,
+                recovery_generation=rotation.target_generation,
+                state="pending_confirmation",
+                encrypted_srs=envelope.ciphertext,
+                kms_provider=(
+                    "aws-kms" if envelope.key_arn.startswith("arn:") else "local-test"
+                ),
+                kms_key_arn=envelope.key_arn,
+                kms_key_material_id=envelope.key_material_id,
+                kms_context_version=KMS_CONTEXT_VERSION,
+                crypto_format_version=1,
+                recovery_context_version=1,
+                provision_request_id=uuid.UUID(signed.request_id),
+                provision_request_digest=digest,
+                expires_at=rotation.expires_at,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(record)
+            if new_rotation_rows:
+                db.add(rotation)
+                db.add_all(new_rotation_rows)
+            self._audit(
+                db,
+                account.id,
+                record.id,
+                None,
+                None,
+                uuid.UUID(signed.request_id),
+                "rotation.provisioned",
+            )
+            await db.commit()
+            return {
+                "account_id": str(account.id),
+                "device_id": str(device.id),
+                "expires_at": format_timestamp(rotation.expires_at),
+                "recovery_id": str(record.id),
+                "rotation_id": str(rotation.id),
+                "srs": encode_base64url(bytes(envelope.plaintext)),
+                "target_generation": rotation.target_generation,
+                "target_policy_epoch": rotation.target_policy_epoch,
+                "vault_id": str(record.vault_id),
+            }
+        finally:
+            envelope.plaintext[:] = b"\x00" * len(envelope.plaintext)
+
+    async def confirm_rotation(
+        self,
+        db: AsyncSession,
+        payload: RecoveryRotationConfirmRequest,
+        document: dict[str, Any],
+    ) -> dict[str, Any]:
+        signed = payload.signed
+        account_id = uuid.UUID(signed.account_id)
+        device_id = uuid.UUID(signed.device_id)
+        account, current_policy, device = await self._authorize_device(
+            db,
+            account_id,
+            device_id,
+            signed.request_id,
+            document["signed"],
+            payload.signature,
+        )
+        rotation = await db.scalar(
+            select(AeternaRecoveryRotation)
+            .where(
+                AeternaRecoveryRotation.id == uuid.UUID(signed.rotation_id),
+                AeternaRecoveryRotation.account_id == account.id,
+            )
+            .with_for_update()
+        )
+        row = await db.scalar(
+            select(AeternaRecoveryRotationDevice)
+            .where(
+                AeternaRecoveryRotationDevice.rotation_id
+                == uuid.UUID(signed.rotation_id),
+                AeternaRecoveryRotationDevice.device_id == device.id,
+            )
+            .with_for_update()
+        )
+        now = self._now()
+        if (
+            rotation is None
+            or row is None
+            or rotation.state not in {"preparing", "active", "complete"}
+            or (rotation.expires_at <= now and row.state != "complete")
+            or row.recovery_id != uuid.UUID(signed.recovery_id)
+            or rotation.target_generation != signed.target_generation
+            or rotation.target_policy_epoch != signed.target_policy_epoch
+        ):
+            raise AeternaProtocolException(
+                409, "recovery.rotation_unavailable", signed.request_id
+            )
+        wrapper_digest = decode_base64url(signed.wrapper_digest, 32)
+        if row.state == "complete":
+            if row.wrapper_digest is None or not secrets.compare_digest(
+                row.wrapper_digest, wrapper_digest
+            ):
+                raise AeternaProtocolException(
+                    409, "recovery.rotation_unavailable", signed.request_id
+                )
+            data = await self._rotation_data(db, rotation)
+            await db.rollback()
+            return data
+        record = await db.scalar(
+            select(AeternaRecoveryRecord)
+            .where(
+                AeternaRecoveryRecord.id == row.recovery_id,
+                AeternaRecoveryRecord.account_id == account.id,
+                AeternaRecoveryRecord.device_id == device.id,
+                AeternaRecoveryRecord.vault_id == uuid.UUID(signed.vault_id),
+                AeternaRecoveryRecord.policy_epoch == rotation.target_policy_epoch,
+                AeternaRecoveryRecord.recovery_generation == rotation.target_generation,
+            )
+            .with_for_update()
+        )
+        if record is None or record.state not in {"pending_confirmation", "sealed"}:
+            raise AeternaProtocolException(
+                409, "recovery.rotation_unavailable", signed.request_id
+            )
+        row.state = "complete"
+        row.wrapper_digest = wrapper_digest
+        row.completed_at = now
+        row.updated_at = now
+        device.policy_epoch = rotation.target_policy_epoch
+        device.updated_at = now
+        record.state = "sealed"
+        record.wrapper_digest = wrapper_digest
+        record.confirmed_at = now
+        record.updated_at = now
+        if rotation.state == "preparing":
+            if (
+                device.id != rotation.initiating_device_id
+                or record.id != rotation.recovery_id
+            ):
+                raise AeternaProtocolException(
+                    409, "recovery.rotation_unavailable", signed.request_id
+                )
+            if rotation.kind == "erc_rotation":
+                old_records = list(
+                    (
+                        await db.scalars(
+                            select(AeternaRecoveryRecord)
+                            .where(
+                                AeternaRecoveryRecord.account_id == account.id,
+                                AeternaRecoveryRecord.policy_epoch
+                                == rotation.source_policy_epoch,
+                                AeternaRecoveryRecord.recovery_generation
+                                == rotation.source_generation,
+                                AeternaRecoveryRecord.state.in_(
+                                    {"pending_confirmation", "sealed"}
+                                ),
+                            )
+                            .with_for_update()
+                        )
+                    ).all()
+                )
+                for old_record in old_records:
+                    old_record.state = "revoked"
+                    old_record.abandoned_at = now
+                    old_record.updated_at = now
+                    grants = list(
+                        (
+                            await db.scalars(
+                                select(AeternaRecoveryGrant)
+                                .where(
+                                    AeternaRecoveryGrant.recovery_id == old_record.id,
+                                    AeternaRecoveryGrant.state == "available",
+                                )
+                                .with_for_update()
+                            )
+                        ).all()
+                    )
+                    for grant in grants:
+                        grant.state = "revoked"
+                        grant.updated_at = now
+            if rotation.kind == "post_compromise":
+                current_policy.retired_at = now
+                current_policy.updated_at = now
+                await db.flush()
+                db.add(
+                    AccountPolicy(
+                        id=self.uuid_factory(),
+                        account_id=account.id,
+                        epoch=rotation.target_policy_epoch,
+                        state=AccountPolicyState.ACTIVE.value,
+                        version=0,
+                        inactivity_window_seconds=current_policy.inactivity_window_seconds,
+                        warning_window_seconds=current_policy.warning_window_seconds,
+                        grace_window_seconds=current_policy.grace_window_seconds,
+                        last_activity_at=now,
+                        due_at=now
+                        + timedelta(seconds=current_policy.inactivity_window_seconds),
+                        state_changed_at=now,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                owner_request = await db.get(
+                    AeternaOwnerRecoveryRequest, rotation.owner_recovery_id
+                )
+                if owner_request is not None:
+                    owner_request.state = "completed"
+                    owner_request.completed_at = now
+                    owner_request.updated_at = now
+            account.current_policy_epoch = rotation.target_policy_epoch
+            account.current_recovery_generation = rotation.target_generation
+            account.updated_at = now
+            rotation.state = "active"
+            rotation.activated_at = now
+            rotation.updated_at = now
+            self._audit(
+                db,
+                account.id,
+                record.id,
+                None,
+                None,
+                uuid.UUID(signed.request_id),
+                "rotation.activated",
+            )
+        self._audit(
+            db,
+            account.id,
+            record.id,
+            None,
+            None,
+            uuid.UUID(signed.request_id),
+            "rotation.device_completed",
+        )
+        remaining = await db.scalar(
+            select(func.count(AeternaRecoveryRotationDevice.id)).where(
+                AeternaRecoveryRotationDevice.rotation_id == rotation.id,
+                AeternaRecoveryRotationDevice.state.in_({"pending", "not_enrolled"}),
+            )
+        )
+        if (remaining or 0) == 0:
+            rotation.state = "complete"
+            rotation.completed_at = now
+            rotation.updated_at = now
+            self._audit(
+                db,
+                account.id,
+                record.id,
+                None,
+                None,
+                uuid.UUID(signed.request_id),
+                "rotation.completed",
+            )
+        await db.commit()
+        return await self._rotation_data(db, rotation)
+
+    def _owner_recovery_data(
+        self, request: AeternaOwnerRecoveryRequest, now: datetime
+    ) -> dict[str, Any]:
+        state = request.state
+        if (
+            state == "cooling_down"
+            and request.ready_at is not None
+            and request.ready_at <= now
+        ):
+            state = "ready"
+        return {
+            "account_id": str(request.account_id),
+            "challenge_id": str(request.challenge_id),
+            "cooldown_seconds": 86_400,
+            "device_id": str(request.device_id),
+            "expires_at": format_timestamp(request.expires_at),
+            "owner_recovery_id": str(request.id),
+            "ready_at": (
+                format_timestamp(request.ready_at)
+                if request.ready_at is not None
+                else None
+            ),
+            "rekey_required": request.rekey_required,
+            "state": state,
+        }
+
+    async def _rotation_data(
+        self, db: AsyncSession, rotation: AeternaRecoveryRotation
+    ) -> dict[str, Any]:
+        devices = list(
+            (
+                await db.execute(
+                    select(AeternaRecoveryRotationDevice, AeternaDevice.label)
+                    .join(
+                        AeternaDevice,
+                        AeternaDevice.id == AeternaRecoveryRotationDevice.device_id,
+                    )
+                    .where(AeternaRecoveryRotationDevice.rotation_id == rotation.id)
+                    .order_by(AeternaRecoveryRotationDevice.device_id)
+                )
+            ).all()
+        )
+        return {
+            "account_id": str(rotation.account_id),
+            "complete": rotation.state == "complete",
+            "devices": [
+                {
+                    "device_id": str(row.device_id),
+                    **({"device_label": label} if label is not None else {}),
+                    "state": row.state,
+                    "updated_at": format_timestamp(row.updated_at),
+                }
+                for row, label in devices
+            ],
+            "kind": rotation.kind,
+            "rotation_id": str(rotation.id),
+            "state": rotation.state,
+            "target_generation": rotation.target_generation,
+            "target_policy_epoch": rotation.target_policy_epoch,
+        }
 
     async def _authorize_device(
         self,
@@ -891,7 +1955,10 @@ class AeternaRecoveryService:
         )
         policy = await db.scalar(
             select(AccountPolicy)
-            .where(AccountPolicy.account_id == account_id)
+            .where(
+                AccountPolicy.account_id == account_id,
+                AccountPolicy.retired_at.is_(None),
+            )
             .with_for_update()
         )
         device = await db.scalar(
@@ -996,6 +2063,7 @@ class AeternaRecoveryService:
         now: datetime,
         recovery_link_id: uuid.UUID | None = None,
         recovery_challenge_id: uuid.UUID | None = None,
+        owner_recovery_id: uuid.UUID | None = None,
     ) -> AeternaEmailOutboxEvent:
         return AeternaEmailOutboxEvent(
             id=self.uuid_factory(),
@@ -1003,6 +2071,7 @@ class AeternaRecoveryService:
             contact_id=contact_id,
             recovery_link_id=recovery_link_id,
             recovery_challenge_id=recovery_challenge_id,
+            owner_recovery_id=owner_recovery_id,
             recipient_kind="contact" if contact_id is not None else "owner",
             event_type=event_type,
             idempotency_key=idempotency_key,

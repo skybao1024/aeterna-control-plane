@@ -16,6 +16,11 @@ from app.db.session import get_db
 from app.exceptions.aeterna_protocol import AeternaProtocolException
 from app.schemas.client.aeterna_protocol import ProtocolErrorResponse
 from app.schemas.client.aeterna_recovery import (
+    OwnerRecoveryActionRequest,
+    OwnerRecoveryResponse,
+    OwnerRecoverySecretResponse,
+    OwnerRecoveryStartRequest,
+    OwnerRecoveryVerifyRequest,
     RecoveryClaimStartRequest,
     RecoveryClaimStartResponse,
     RecoveryClaimVerifyRequest,
@@ -24,6 +29,10 @@ from app.schemas.client.aeterna_recovery import (
     RecoveryRecordProvisionRequest,
     RecoveryRecordProvisionResponse,
     RecoveryRecordResponse,
+    RecoveryRotationConfirmRequest,
+    RecoveryRotationProvisionRequest,
+    RecoveryRotationProvisionResponse,
+    RecoveryRotationResponse,
     RecoverySecretRequest,
     RecoverySecretResponse,
 )
@@ -190,3 +199,115 @@ async def release_recovery_secret(
         db, payload.request_id, service.release_secret(db, payload)
     )
     return protocol_response(payload.request_id, data, no_store=True)
+
+
+@router.post(
+    "/recovery/owner/start",
+    response_model=OwnerRecoveryResponse,
+    responses=PROTOCOL_ERROR_RESPONSES,
+    openapi_extra=openapi_request(OwnerRecoveryStartRequest),
+)
+async def start_owner_recovery(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    service: AeternaRecoveryService = Depends(get_aeterna_recovery_service),
+):
+    payload, document = await parse_protocol_body(request, OwnerRecoveryStartRequest)
+    data = await _database_call(
+        db,
+        payload.signed.request_id,
+        service.start_owner_recovery(db, payload, document),
+    )
+    return protocol_response(payload.signed.request_id, data, no_store=True)
+
+
+@router.post(
+    "/recovery/owner/verify",
+    response_model=OwnerRecoveryResponse,
+    responses=PROTOCOL_ERROR_RESPONSES,
+    openapi_extra=openapi_request(OwnerRecoveryVerifyRequest),
+)
+async def verify_owner_recovery(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    service: AeternaRecoveryService = Depends(get_aeterna_recovery_service),
+):
+    payload, _document = await parse_protocol_body(request, OwnerRecoveryVerifyRequest)
+    data = await _database_call(
+        db, payload.request_id, service.verify_owner_recovery(db, payload)
+    )
+    return protocol_response(payload.request_id, data, no_store=True)
+
+
+@router.post(
+    "/recovery/owner/{owner_recovery_id}/action",
+    response_model=OwnerRecoveryResponse | OwnerRecoverySecretResponse,
+    responses=PROTOCOL_ERROR_RESPONSES,
+    openapi_extra=openapi_request(OwnerRecoveryActionRequest),
+)
+async def act_on_owner_recovery(
+    owner_recovery_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    service: AeternaRecoveryService = Depends(get_aeterna_recovery_service),
+):
+    payload, document = await parse_protocol_body(request, OwnerRecoveryActionRequest)
+    if payload.signed.owner_recovery_id != owner_recovery_id:
+        raise AeternaProtocolException(
+            400, "protocol.invalid_request", payload.signed.request_id
+        )
+    data = await _database_call(
+        db,
+        payload.signed.request_id,
+        service.act_on_owner_recovery(db, payload, document),
+    )
+    return protocol_response(payload.signed.request_id, data, no_store=True)
+
+
+@router.post(
+    "/recovery/rotations/provision",
+    response_model=RecoveryRotationProvisionResponse,
+    responses=PROTOCOL_ERROR_RESPONSES,
+    openapi_extra=openapi_request(RecoveryRotationProvisionRequest),
+)
+async def provision_recovery_rotation(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    service: AeternaRecoveryService = Depends(get_aeterna_recovery_service),
+):
+    payload, document = await parse_protocol_body(
+        request, RecoveryRotationProvisionRequest
+    )
+    data = await _database_call(
+        db,
+        payload.signed.request_id,
+        service.provision_rotation(db, payload, document),
+    )
+    return protocol_response(payload.signed.request_id, data, no_store=True)
+
+
+@router.post(
+    "/recovery/rotations/{rotation_id}/confirm",
+    response_model=RecoveryRotationResponse,
+    responses=PROTOCOL_ERROR_RESPONSES,
+    openapi_extra=openapi_request(RecoveryRotationConfirmRequest),
+)
+async def confirm_recovery_rotation(
+    rotation_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    service: AeternaRecoveryService = Depends(get_aeterna_recovery_service),
+):
+    payload, document = await parse_protocol_body(
+        request, RecoveryRotationConfirmRequest
+    )
+    if payload.signed.rotation_id != rotation_id:
+        raise AeternaProtocolException(
+            400, "protocol.invalid_request", payload.signed.request_id
+        )
+    data = await _database_call(
+        db,
+        payload.signed.request_id,
+        service.confirm_rotation(db, payload, document),
+    )
+    return protocol_response(payload.signed.request_id, data)

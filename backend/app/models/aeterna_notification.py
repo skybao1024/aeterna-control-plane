@@ -178,7 +178,10 @@ class AeternaEmailOutboxEvent(BaseModel):
             "'owner-warning-required', 'owner-release-authorized', "
             "'contact-invitation', 'contact-test', 'recovery-claim-link', "
             "'recovery-otp', 'recovery-claimed-owner', "
-            "'recovery-claimed-contact')",
+            "'recovery-claimed-contact', 'owner-recovery-otp', "
+            "'owner-recovery-cooling-down', 'owner-recovery-cancelled', "
+            "'owner-recovery-material-released', "
+            "'owner-recovery-successor-authorized')",
             name="ck_aeterna_email_outbox_events_event_type",
         ),
         CheckConstraint(
@@ -212,6 +215,12 @@ class AeternaEmailOutboxEvent(BaseModel):
             "(event_type = 'recovery-otp' AND recovery_challenge_id IS NOT NULL) OR "
             "(event_type <> 'recovery-otp' AND recovery_challenge_id IS NULL)",
             name="ck_aeterna_email_outbox_events_recovery_challenge_reference",
+        ),
+        CheckConstraint(
+            "(event_type LIKE 'owner-recovery-%' AND owner_recovery_id IS NOT NULL) "
+            "OR (event_type NOT LIKE 'owner-recovery-%' "
+            "AND owner_recovery_id IS NULL)",
+            name="ck_aeterna_email_outbox_events_owner_recovery_reference",
         ),
         Index(
             "ix_aeterna_email_outbox_events_dispatch",
@@ -253,6 +262,11 @@ class AeternaEmailOutboxEvent(BaseModel):
     recovery_challenge_id = Column(
         UUID(as_uuid=True),
         ForeignKey("aeterna_recovery_otp_challenges.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    owner_recovery_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_owner_recovery_requests.id", ondelete="CASCADE"),
         nullable=True,
     )
     source_policy_outbox_id = Column(

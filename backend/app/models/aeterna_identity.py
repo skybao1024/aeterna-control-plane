@@ -49,6 +49,8 @@ class AeternaAccount(BaseModel):
     email_key_version = Column(Integer, nullable=False, default=1)
     first_device_bound_at = Column(TIMESTAMP(timezone=True), nullable=True)
     last_activity_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    current_policy_epoch = Column(Integer, nullable=False, default=1)
+    current_recovery_generation = Column(Integer, nullable=False, default=1)
     is_active = Column(Boolean, nullable=False, default=True)
 
 
@@ -96,6 +98,7 @@ class AeternaDevice(BaseModel):
     status = Column(String(16), nullable=False, default="active")
     bound_at = Column(TIMESTAMP(timezone=True), nullable=False)
     heartbeat_authorized_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    policy_epoch = Column(Integer, nullable=False, default=1)
     last_sequence = Column(BigInteger, nullable=False, default=0)
     last_seen_at = Column(TIMESTAMP(timezone=True), nullable=True)
     last_heartbeat_request_id = Column(UUID(as_uuid=True), nullable=True)

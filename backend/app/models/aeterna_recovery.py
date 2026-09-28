@@ -4,6 +4,7 @@ import uuid
 
 from sqlalchemy import (
     TIMESTAMP,
+    Boolean,
     CheckConstraint,
     Column,
     ForeignKey,
@@ -29,6 +30,8 @@ class AeternaRecoveryRecord(BaseModel):
             "account_id",
             "device_id",
             "vault_id",
+            "policy_epoch",
+            "recovery_generation",
             unique=True,
             postgresql_where=text("state IN ('pending_confirmation', 'sealed')"),
         ),
@@ -37,7 +40,8 @@ class AeternaRecoveryRecord(BaseModel):
             name="uq_aeterna_recovery_records_provision_request",
         ),
         CheckConstraint(
-            "state IN ('pending_confirmation', 'sealed', 'abandoned', 'expired')",
+            "state IN ('pending_confirmation', 'sealed', 'abandoned', 'expired', "
+            "'revoked')",
             name="ck_aeterna_recovery_records_state",
         ),
         CheckConstraint(
@@ -62,7 +66,8 @@ class AeternaRecoveryRecord(BaseModel):
             "AND confirmed_at IS NULL AND abandoned_at IS NULL) OR "
             "(state = 'sealed' AND wrapper_digest IS NOT NULL "
             "AND confirmed_at IS NOT NULL AND abandoned_at IS NULL) OR "
-            "(state IN ('abandoned', 'expired') AND abandoned_at IS NOT NULL)",
+            "(state IN ('abandoned', 'expired', 'revoked') "
+            "AND abandoned_at IS NOT NULL)",
             name="ck_aeterna_recovery_records_state_timestamps",
         ),
     )
@@ -81,6 +86,8 @@ class AeternaRecoveryRecord(BaseModel):
         index=True,
     )
     vault_id = Column(UUID(as_uuid=True), nullable=False)
+    policy_epoch = Column(Integer, nullable=False, default=1)
+    recovery_generation = Column(Integer, nullable=False, default=1)
     state = Column(String(24), nullable=False)
     encrypted_srs = Column(LargeBinary, nullable=False)
     kms_provider = Column(String(32), nullable=False)
@@ -297,7 +304,10 @@ class AeternaRecoveryAudit(BaseModel):
         CheckConstraint(
             "event_type IN ('record.provisioned', 'record.confirmed', "
             "'record.abandoned', 'grant.created', 'claim.started', "
-            "'claim.verified', 'secret.released')",
+            "'claim.verified', 'secret.released', 'owner.started', "
+            "'owner.verified', 'owner.cancelled', 'owner.released', "
+            "'owner.completed', 'rotation.provisioned', 'rotation.activated', "
+            "'rotation.device_completed', 'rotation.completed')",
             name="ck_aeterna_recovery_audit_event_type",
         ),
     )
@@ -310,3 +320,178 @@ class AeternaRecoveryAudit(BaseModel):
     request_id = Column(UUID(as_uuid=True), nullable=True)
     event_type = Column(String(32), nullable=False)
     status = Column(String(24), nullable=False)
+
+
+class AeternaOwnerRecoveryRequest(BaseModel):
+    """Email-verified owner recovery with a cancellable cooldown."""
+
+    __tablename__ = "aeterna_owner_recovery_requests"
+    __table_args__ = (
+        UniqueConstraint(
+            "start_request_id", name="uq_aeterna_owner_recovery_start_request"
+        ),
+        CheckConstraint(
+            "state IN ('pending_email', 'cooling_down', 'material_released', "
+            "'completed', 'cancelled', 'expired')",
+            name="ck_aeterna_owner_recovery_state",
+        ),
+        CheckConstraint(
+            "octet_length(start_request_digest) = 32 AND "
+            "octet_length(wrapper_digest) = 32 AND octet_length(otp_verifier) = 32",
+            name="ck_aeterna_owner_recovery_digest_lengths",
+        ),
+        CheckConstraint(
+            "attempt_count BETWEEN 0 AND 5 AND otp_key_version > 0",
+            name="ck_aeterna_owner_recovery_otp_bounds",
+        ),
+        Index(
+            "uq_aeterna_owner_recovery_live_account",
+            "account_id",
+            unique=True,
+            postgresql_where=text(
+                "state IN ('pending_email', 'cooling_down', 'material_released')"
+            ),
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    account_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    device_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_devices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    recovery_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_recovery_records.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    vault_id = Column(UUID(as_uuid=True), nullable=False)
+    policy_epoch = Column(Integer, nullable=False)
+    recovery_generation = Column(Integer, nullable=False)
+    rekey_required = Column(Boolean, nullable=False, default=False)
+    wrapper_digest = Column(LargeBinary, nullable=False)
+    state = Column(String(24), nullable=False)
+    start_request_id = Column(UUID(as_uuid=True), nullable=False)
+    start_request_digest = Column(LargeBinary, nullable=False)
+    challenge_id = Column(UUID(as_uuid=True), nullable=False, unique=True)
+    otp_verifier = Column(LargeBinary, nullable=False)
+    otp_key_version = Column(Integer, nullable=False)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    challenge_expires_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    ready_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    expires_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    verified_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    released_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    completed_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    cancelled_at = Column(TIMESTAMP(timezone=True), nullable=True)
+
+
+class AeternaRecoveryRotation(BaseModel):
+    """One generation or post-compromise policy-epoch rotation."""
+
+    __tablename__ = "aeterna_recovery_rotations"
+    __table_args__ = (
+        UniqueConstraint(
+            "provision_request_id", name="uq_aeterna_recovery_rotation_request"
+        ),
+        CheckConstraint(
+            "kind IN ('erc_rotation', 'post_compromise')",
+            name="ck_aeterna_recovery_rotation_kind",
+        ),
+        CheckConstraint(
+            "state IN ('preparing', 'active', 'complete', 'cancelled')",
+            name="ck_aeterna_recovery_rotation_state",
+        ),
+        CheckConstraint(
+            "target_generation = source_generation + 1 AND "
+            "target_policy_epoch >= source_policy_epoch",
+            name="ck_aeterna_recovery_rotation_targets",
+        ),
+        Index(
+            "uq_aeterna_recovery_rotations_live_account",
+            "account_id",
+            unique=True,
+            postgresql_where=text("state IN ('preparing', 'active')"),
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    account_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    initiating_device_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_devices.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    recovery_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_recovery_records.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    owner_recovery_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_owner_recovery_requests.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    vault_id = Column(UUID(as_uuid=True), nullable=False)
+    kind = Column(String(24), nullable=False)
+    state = Column(String(16), nullable=False)
+    source_policy_epoch = Column(Integer, nullable=False)
+    target_policy_epoch = Column(Integer, nullable=False)
+    source_generation = Column(Integer, nullable=False)
+    target_generation = Column(Integer, nullable=False)
+    provision_request_id = Column(UUID(as_uuid=True), nullable=False)
+    expires_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    activated_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    completed_at = Column(TIMESTAMP(timezone=True), nullable=True)
+
+
+class AeternaRecoveryRotationDevice(BaseModel):
+    """Per-device wrapper completion state for a recovery rotation."""
+
+    __tablename__ = "aeterna_recovery_rotation_devices"
+    __table_args__ = (
+        UniqueConstraint("rotation_id", "device_id", name="uq_aeterna_rotation_device"),
+        UniqueConstraint("recovery_id", name="uq_aeterna_rotation_device_recovery"),
+        CheckConstraint(
+            "state IN ('pending', 'not_enrolled', 'complete', 'excluded')",
+            name="ck_aeterna_rotation_device_state",
+        ),
+        CheckConstraint(
+            "wrapper_digest IS NULL OR octet_length(wrapper_digest) = 32",
+            name="ck_aeterna_rotation_device_wrapper_digest",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    rotation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_recovery_rotations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    device_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_devices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    recovery_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("aeterna_recovery_records.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    state = Column(String(16), nullable=False)
+    wrapper_digest = Column(LargeBinary, nullable=True)
+    completed_at = Column(TIMESTAMP(timezone=True), nullable=True)

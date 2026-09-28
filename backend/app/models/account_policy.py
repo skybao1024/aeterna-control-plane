@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -59,7 +60,15 @@ class AccountPolicy(BaseModel):
             "grace_window_seconds >= 259200",
             name="ck_account_policies_grace_window_minimum",
         ),
-        UniqueConstraint("account_id", name="uq_account_policies_account_id"),
+        UniqueConstraint(
+            "account_id", "epoch", name="uq_account_policies_account_epoch"
+        ),
+        Index(
+            "uq_account_policies_current_account",
+            "account_id",
+            unique=True,
+            postgresql_where=text("retired_at IS NULL"),
+        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -69,6 +78,8 @@ class AccountPolicy(BaseModel):
         nullable=True,
         index=True,
     )
+    epoch = Column(Integer, nullable=False, default=1)
+    retired_at = Column(TIMESTAMP(timezone=True), nullable=True)
     state = Column(String(24), nullable=False, default=AccountPolicyState.ACTIVE.value)
     version = Column(Integer, nullable=False, default=0)
     inactivity_window_seconds = Column(Integer, nullable=False)

@@ -26,6 +26,7 @@ from app.models.aeterna_notification import (
     AeternaRecipientSuppression,
 )
 from app.models.aeterna_recovery import (
+    AeternaOwnerRecoveryRequest,
     AeternaRecoveryClaimLink,
     AeternaRecoveryOtpChallenge,
 )
@@ -658,7 +659,29 @@ class AeternaEmailDeliveryService:
                     account.id,
                     template.owner_message_key_version,
                 )
-            subject, fixed_text = self._owner_copy(event.event_type)
+            if event.event_type == "owner-recovery-otp":
+                recovery = await db.get(
+                    AeternaOwnerRecoveryRequest, event.owner_recovery_id
+                )
+                if (
+                    recovery is None
+                    or recovery.state != "pending_email"
+                    or recovery.challenge_expires_at <= now
+                ):
+                    raise EmailDeliveryFailure(
+                        "owner-recovery-otp-unavailable", retryable=False
+                    )
+                code = derive_recovery_otp(
+                    keys, recovery.challenge_id, recovery.otp_key_version
+                )
+                subject = "Aeterna owner recovery verification code"
+                fixed_text = (
+                    "Use this one-time code to verify an owner recovery request: "
+                    f"{code}\n\nThe code expires in 10 minutes."
+                )
+                custom_message = ""
+            else:
+                subject, fixed_text = self._owner_copy(event.event_type)
         else:
             if contact is None:
                 raise RuntimeError("Contact delivery is missing its contact")
@@ -807,6 +830,26 @@ class AeternaEmailDeliveryService:
                 "Aeterna recovery secret was claimed",
                 "A verified recovery contact completed a one-time recovery-secret "
                 "claim. This security notice contains no recovery material.",
+            ),
+            "owner-recovery-cooling-down": (
+                "Aeterna owner recovery cooling-down started",
+                "An owner recovery request passed email verification and entered "
+                "a 24-hour cooling-down period. Any active bound device can cancel it.",
+            ),
+            "owner-recovery-cancelled": (
+                "Aeterna owner recovery cancelled",
+                "An active bound device cancelled the pending owner recovery request.",
+            ),
+            "owner-recovery-material-released": (
+                "Aeterna owner recovery material released",
+                "Recovery material was released to the initiating device after the "
+                "cooling-down period. Access wrappers must now be replaced.",
+            ),
+            "owner-recovery-successor-authorized": (
+                "Aeterna successor protection authorized",
+                "A bound device and Owner mailbox verification authorized a "
+                "post-compromise successor. No old recovery secret was released; "
+                "the device must complete an atomic local rekey.",
             ),
         }
         try:
