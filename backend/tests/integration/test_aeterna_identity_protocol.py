@@ -30,6 +30,7 @@ from app.schemas.client.aeterna_protocol import (
     DeviceBindingCancellationRequest,
     DeviceBindingDelayedConfirmationRequest,
     DeviceBindingRequest,
+    DeviceBindingStatusRequest,
 )
 from app.services.client.aeterna_identity import AeternaIdentityService
 from app.services.common.aeterna_security import AeternaIdentityKeys
@@ -66,8 +67,11 @@ class CommitObservingNotifier:
         self.challenge_was_committed: list[bool] = []
         self.security_events: list[str] = []
 
-    async def send_challenge(self, email: str, code: str) -> bool:
+    async def send_challenge(
+        self, email: str, code: str, expires_in_minutes: int
+    ) -> bool:
         assert email.endswith("@example.com")
+        assert expires_in_minutes == 10
         session_factory = get_session_local()
         async with session_factory() as db:
             count = await db.scalar(select(func.count(AeternaAccountChallenge.id)))
@@ -199,6 +203,144 @@ async def request_binding(
     )
     assert status_code == 201
     return document, data
+
+
+async def read_binding_status(
+    db,
+    service: AeternaIdentityService,
+    account_id: str,
+    device_id: str,
+    private_key: Ed25519PrivateKey,
+    signing_private_key: Ed25519PrivateKey | None = None,
+) -> dict:
+    signed = {
+        "account_id": account_id,
+        "canonicalization": "jcs-rfc8785",
+        "device_id": device_id,
+        "domain": "aeterna.device-binding.status.v1",
+        "operation": "device_binding.status",
+        "protocol_version": 1,
+        "public_key": public_key(private_key),
+        "request_id": new_request_id(),
+        "signature_version": 1,
+    }
+    document = signed_envelope(signed, signing_private_key or private_key)
+    payload = DeviceBindingStatusRequest.model_validate(document)
+    return await service.read_binding_status(db, payload, document)
+
+
+async def test_binding_status_survives_service_restart_and_rejects_wrong_key(
+    identity_context,
+):
+    service, clock, notifier = identity_context
+    first_key = signing_key(0x71)
+    second_key = signing_key(0x72)
+    wrong_key = signing_key(0x73)
+    first_id = str(uuid.uuid4())
+    second_id = str(uuid.uuid4())
+    session_factory = get_session_local()
+
+    async with session_factory() as db:
+        grant = await issue_grant(
+            db, service, notifier, "account_onboarding", "192.0.2.71"
+        )
+        _, first = await request_binding(
+            db, service, grant, first_key, first_id, "First synthetic device"
+        )
+        assert first["state"] == "active"
+
+        invalid_signed = {
+            "binding_grant_id": grant["binding_grant_id"],
+            "canonicalization": "jcs-rfc8785",
+            "device_id": str(uuid.uuid4()),
+            "domain": "aeterna.device-binding.request.v1",
+            "operation": "device_binding.request",
+            "protocol_version": 1,
+            "public_key": public_key(wrong_key),
+            "request_id": new_request_id(),
+            "signature_version": 1,
+        }
+        invalid_document = signed_envelope(invalid_signed, wrong_key)
+        invalid_payload = DeviceBindingRequest.model_validate(invalid_document)
+        with pytest.raises(AeternaProtocolException) as invalid_grant:
+            await service.request_binding(
+                db, invalid_payload, invalid_document, encode(bytes([0x91]) * 32)
+            )
+        assert invalid_grant.value.code == "auth.binding_grant_invalid"
+        await db.rollback()
+
+        clock.advance(timedelta(seconds=61))
+        second_grant = await issue_grant(
+            db, service, notifier, "device_binding", "192.0.2.72"
+        )
+        _, pending = await request_binding(
+            db, service, second_grant, second_key, second_id, "Second synthetic device"
+        )
+        restarted_service = AeternaIdentityService(
+            key_provider=service.key_provider,
+            clock=clock.now,
+            otp_factory=lambda: SYNTHETIC_OTP,
+        )
+        observed_pending = await read_binding_status(
+            db, restarted_service, grant["account_id"], second_id, second_key
+        )
+        assert observed_pending["state"] == "pending"
+        assert observed_pending["challenge"] == pending["challenge"]
+        assert "active_device_count" not in observed_pending
+
+        with pytest.raises(AeternaProtocolException) as invalid_proof:
+            await read_binding_status(
+                db,
+                restarted_service,
+                grant["account_id"],
+                second_id,
+                second_key,
+                signing_private_key=wrong_key,
+            )
+        assert invalid_proof.value.code == "device.binding_not_found"
+        await db.rollback()
+
+        approval_signed = {
+            "account_id": grant["account_id"],
+            "approving_device_id": first_id,
+            "binding_id": pending["binding_id"],
+            "canonicalization": "jcs-rfc8785",
+            "challenge": encode(bytes([0x00]) * 32),
+            "device_id": second_id,
+            "domain": "aeterna.device-binding.approval.v1",
+            "operation": "device_binding.approval",
+            "protocol_version": 1,
+            "public_key": public_key(second_key),
+            "request_id": new_request_id(),
+            "signature_version": 1,
+        }
+        rejected_document = signed_envelope(approval_signed, first_key)
+        rejected_payload = DeviceBindingApprovalRequest.model_validate(
+            rejected_document
+        )
+        with pytest.raises(AeternaProtocolException) as rejected:
+            await service.approve_binding(
+                db, rejected_payload, rejected_document, notifier
+            )
+        assert rejected.value.code == "device.proof_invalid"
+        await db.rollback()
+
+        approved = await approve_pending_binding(
+            db,
+            restarted_service,
+            notifier,
+            grant["account_id"],
+            pending,
+            first_id,
+            first_key,
+            second_key,
+        )
+        assert approved["state"] == "active"
+        observed_active = await read_binding_status(
+            db, service, grant["account_id"], second_id, second_key
+        )
+        assert observed_active["active_device_count"] == 2
+        assert "challenge" not in observed_active
 
 
 async def approve_pending_binding(

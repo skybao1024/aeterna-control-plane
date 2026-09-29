@@ -1,8 +1,8 @@
 {
   "manifest_version": 1,
   "protocol_version": 1,
-  "release": "1.3.0",
-  "release_tag": "protocol-v1.3.0",
+  "release": "1.4.0",
+  "release_tag": "protocol-v1.4.0",
   "files": [
     {
       "path": "errors.json",
@@ -55,6 +55,10 @@
     {
       "path": "fixtures/signatures/device-binding-request.json",
       "sha256": "384f0b6ebf214e8295a20e793766e76bc0953943ea520d10b83e531e7162d6fd"
+    },
+    {
+      "path": "fixtures/signatures/device-binding-status.json",
+      "sha256": "a9dacab5c3fde726cfa7a2b5d0e414b6ca1eefb627d7794dc5682dde574d89bd"
     },
     {
       "path": "fixtures/signatures/device-status-change.json",
@@ -123,6 +127,14 @@
     {
       "path": "fixtures/valid/device-binding-response.json",
       "sha256": "1171e64ae344f8031d64defb7091ce8a069957bed990e65091dee8ad1c1b4c3a"
+    },
+    {
+      "path": "fixtures/valid/device-binding-status-request.json",
+      "sha256": "f316d0e9eb98a88ab6fd26ec4ed7efed8dccd0c63aa8e2434b3f783283725db1"
+    },
+    {
+      "path": "fixtures/valid/device-binding-status-response.json",
+      "sha256": "31729ee30053865d4cb0ea4eae3a1e3b3a6595bd02c83df3a32b8a9c080ba9b3"
     },
     {
       "path": "fixtures/valid/device-status-change-request.json",
@@ -218,7 +230,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "7804cfc1231f92c35c80cc0a25cc311c1acc3766cba9c3e93d10b28d4d3499bc"
+      "sha256": "92668fd824e2727cf2fe03fb121ac0220cbfa5a00c186a84701d2228e482574a"
     },
     {
       "path": "schemas/account-challenge-request.schema.json",
@@ -259,6 +271,14 @@
     {
       "path": "schemas/device-binding-response.schema.json",
       "sha256": "656b2046d8ee5d36c39fc3ad570fc712af704dcfb3c4c906be37a58dd27d41bd"
+    },
+    {
+      "path": "schemas/device-binding-status-request.schema.json",
+      "sha256": "2b1ae44a19dc69f02734b45dbd0535989c684f8d679a00cccb385b5013ad06f8"
+    },
+    {
+      "path": "schemas/device-binding-status-response.schema.json",
+      "sha256": "8e39ab064273cb76cf1c2537e7ebfcc4aa7b466b6a3eab50870aaa77db7ea7ce"
     },
     {
       "path": "schemas/device-status-change-request.schema.json",
@@ -357,5 +377,5 @@
       "sha256": "4476eb1b9e8f18c1c64d8ded1e84d4988b92fe8d24146dd14c4bd6812e9b2506"
     }
   ],
-  "release_digest": "b7b0f41af9023ae7e30b4f21f5fae47976ec9b8cf490b50c8d61d81137abb75f"
+  "release_digest": "6772a387715bcb170da99b82d3bcbe254d5c69fe2e1e129cf9d982d007f06274"
 }

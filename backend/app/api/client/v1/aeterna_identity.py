@@ -24,6 +24,8 @@ from app.schemas.client.aeterna_protocol import (
     DeviceBindingDelayedConfirmationRequest,
     DeviceBindingRequest,
     DeviceBindingResponse,
+    DeviceBindingStatusRequest,
+    DeviceBindingStatusResponse,
     ProtocolErrorResponse,
 )
 from app.services.client.aeterna_identity import (
@@ -159,6 +161,26 @@ async def approve_device_binding(
         service.approve_binding(db, payload, document, notifier),
     )
     return protocol_response(payload.signed.request_id, data, status_code)
+
+
+@router.post(
+    "/device-bindings/status",
+    response_model=DeviceBindingStatusResponse,
+    responses=PROTOCOL_ERROR_RESPONSES,
+    openapi_extra=openapi_request(DeviceBindingStatusRequest),
+)
+async def read_device_binding_status(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    service: AeternaIdentityService = Depends(get_aeterna_identity_service),
+):
+    payload, document = await parse_protocol_body(request, DeviceBindingStatusRequest)
+    data = await _database_call(
+        db,
+        payload.signed.request_id,
+        service.read_binding_status(db, payload, document),
+    )
+    return protocol_response(payload.signed.request_id, data, no_store=True)
 
 
 @router.post(

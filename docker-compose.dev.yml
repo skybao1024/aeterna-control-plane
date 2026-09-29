@@ -20,12 +20,24 @@ services:
       POSTGRES_PORT: 5432
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      MAIL_ENCRYPTION: none
     volumes:
       - ./backend:/app
       - backend-logs:/app/logs
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8001}:${API_PORT:-8001}"
     command: python main.py
+
+  mailpit:
+    image: axllent/mailpit:v1.31.1
+    networks:
+      - app-network
+    environment:
+      MP_MAX_MESSAGES: 100
+    ports:
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
 
   celery-worker:
     image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:dev

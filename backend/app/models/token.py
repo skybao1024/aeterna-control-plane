@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from .base import BaseModel
+from .user import User
 
 
 class Token(BaseModel):
@@ -17,7 +18,7 @@ class Token(BaseModel):
     )
     is_active = Column(Boolean, default=True)
 
-    user = relationship("User", backref="tokens")
+    user = relationship(User, backref="tokens")
 
 
 class AdminToken(BaseModel):

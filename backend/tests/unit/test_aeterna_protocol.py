@@ -17,6 +17,8 @@ from app.schemas.client.aeterna_protocol import (
     AccountChallengeRequest,
     DeviceBindingApprovalRequest,
     DeviceBindingRequest,
+    DeviceBindingStatusRequest,
+    DeviceBindingStatusResponse,
     DeviceStatusChangeRequest,
     DeviceStatusChangeResponse,
     HeartbeatRequest,
@@ -46,7 +48,7 @@ from app.services.common.aeterna_security import (
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "aeterna-protocol-v1"
 EXPECTED_PUBLIC_RELEASE_DIGEST = (
-    "b7b0f41af9023ae7e30b4f21f5fae47976ec9b8cf490b50c8d61d81137abb75f"
+    "6772a387715bcb170da99b82d3bcbe254d5c69fe2e1e129cf9d982d007f06274"
 )
 
 
@@ -77,7 +79,7 @@ def make_request(body: bytes, content_type: str = "application/json") -> Request
 
 def test_vendored_public_release_digest_and_every_file_hash_match():
     manifest = load_json("manifest.json")
-    assert manifest["release_tag"] == "protocol-v1.3.0"
+    assert manifest["release_tag"] == "protocol-v1.4.0"
     assert manifest["release_digest"] == EXPECTED_PUBLIC_RELEASE_DIGEST
     for entry in manifest["files"]:
         content = (FIXTURE_ROOT / entry["path"]).read_bytes()
@@ -98,6 +100,10 @@ def test_python_jcs_and_ed25519_match_published_request_and_approval_vectors():
         (
             "fixtures/signatures/device-binding-approval.json",
             DeviceBindingApprovalRequest,
+        ),
+        (
+            "fixtures/signatures/device-binding-status.json",
+            DeviceBindingStatusRequest,
         ),
         ("fixtures/signatures/heartbeat-request.json", HeartbeatRequest),
         (
@@ -171,6 +177,9 @@ def test_python_jcs_matches_unicode_property_order_and_escaping_vector():
 
 
 def test_i10_published_success_responses_match_runtime_models():
+    DeviceBindingStatusResponse.model_validate(
+        load_json("fixtures/valid/device-binding-status-response.json")
+    )
     HeartbeatResponse.model_validate(
         load_json("fixtures/valid/heartbeat-response.json")
     )

@@ -31,6 +31,13 @@ active device uses `aeterna.device-binding.approval.v1`. Operation names prevent
 replay between initial request, delayed confirmation, cancellation, and
 existing-device approval.
 
+A device queries its current binding under the distinct
+`aeterna.device-binding.status.v1` domain. The service verifies the matching
+device key before returning its current state. Only an active device receives
+the active-device count. A pending device receives only its own binding
+challenge and delay bounds so an interrupted desktop can recover the approval
+request. The query returns no email, OTP, grant, or private key material.
+
 An active device submits heartbeats under `aeterna.heartbeat.submit.v1` and
 changes device eligibility under `aeterna.device-status.change.v1`. These
 domains are not interchangeable with each other or with device binding. A
@@ -58,7 +65,7 @@ the RFC 8785 canonical manifest without `release_digest`. The private control
 plane vendors this exact package, pins the release tag and digest, and runs the
 same fixtures.
 
-The prepared release is `1.3.0` with tag name `protocol-v1.3.0`; preparing the
+The prepared release is `1.4.0` with tag name `protocol-v1.4.0`; preparing the
 manifest does not create or publish a Git tag. Signed field changes and security
 semantic changes require a new major/versioned operation as defined by ADR 0012. The prior major remains supported for at least 180 days after a successor
 reaches general availability, with at least 90 days' sunset notice unless a

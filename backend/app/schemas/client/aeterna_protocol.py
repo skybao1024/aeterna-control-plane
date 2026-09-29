@@ -103,6 +103,20 @@ class DeviceBindingApprovalRequest(ClosedModel):
     signature: Base64Url64
 
 
+class DeviceBindingStatusSigned(SignedHeader):
+    domain: Literal["aeterna.device-binding.status.v1"]
+    operation: Literal["device_binding.status"]
+    account_id: UuidString
+    device_id: UuidString
+    public_key: Base64Url32
+
+
+class DeviceBindingStatusRequest(ClosedModel):
+    protocol_version: Literal[1]
+    signed: DeviceBindingStatusSigned
+    signature: Base64Url64
+
+
 class DeviceBindingConfirmationSigned(SignedHeader):
     domain: Literal["aeterna.device-binding.request.v1"]
     operation: Literal[
@@ -210,6 +224,28 @@ class DeviceBindingResponse(ClosedModel):
     protocol_version: Literal[1]
     request_id: UuidString
     data: DeviceBindingData
+
+
+class DeviceBindingStatusData(ClosedModel):
+    account_id: UuidString
+    binding_id: UuidString
+    device_id: UuidString
+    state: Literal[
+        "active", "pending", "cancelled", "expired", "dormant", "lost", "revoked"
+    ]
+    observed_at: Timestamp
+    challenge: Optional[Base64Url32] = None
+    not_before: Optional[Timestamp] = None
+    expires_at: Optional[Timestamp] = None
+    active_device_count: Optional[Annotated[int, Field(strict=True, ge=0, le=32)]] = (
+        None
+    )
+
+
+class DeviceBindingStatusResponse(ClosedModel):
+    protocol_version: Literal[1]
+    request_id: UuidString
+    data: DeviceBindingStatusData
 
 
 class HeartbeatData(ClosedModel):

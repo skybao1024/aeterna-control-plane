@@ -32,7 +32,7 @@ mail_conf = ConnectionConfig(
         if hasattr(settings, "MAIL_ENCRYPTION")
         else False
     ),
-    USE_CREDENTIALS=True,
+    USE_CREDENTIALS=bool(settings.MAIL_USERNAME and settings.MAIL_PASSWORD),
     VALIDATE_CERTS=True,
 )
 
@@ -97,8 +97,9 @@ class EmailService:
                 ):
                     server.starttls()
 
-                # If login is required
-                server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+                # Development SMTP sinks may not require authentication.
+                if settings.MAIL_USERNAME and settings.MAIL_PASSWORD:
+                    server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
 
                 server.sendmail(from_email, to_emails, message.as_string())
 
@@ -194,7 +195,11 @@ class EmailService:
 
     # Dedicated methods for convenience
     async def send_verification_email(
-        self, email: str, first_name: str, verification_code: str
+        self,
+        email: str,
+        first_name: str,
+        verification_code: str,
+        expires_in_minutes: int = 5,
     ) -> bool:
         """
         Send account verification email
@@ -205,6 +210,7 @@ class EmailService:
             template_params={
                 "first_name": first_name,
                 "verification_code": verification_code,
+                "expires_in_minutes": expires_in_minutes,
             },
             subject="Verify your Aeterna email address",
         )

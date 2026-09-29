@@ -26,6 +26,7 @@ from app.schemas.client.aeterna_protocol import (
     DeviceBindingCancellationRequest,
     DeviceBindingDelayedConfirmationRequest,
     DeviceBindingRequest,
+    DeviceBindingStatusRequest,
 )
 from app.services.client.aeterna_heartbeat import DEVICE_DORMANCY
 from app.services.common.aeterna_notifier import AeternaAccountNotifier
@@ -196,7 +197,9 @@ class AeternaIdentityService:
 
         delivery_status = "failed"
         try:
-            if await notifier.send_challenge(normalized_email, code):
+            if await notifier.send_challenge(
+                normalized_email, code, int(CHALLENGE_LIFETIME.total_seconds() // 60)
+            ):
                 delivery_status = "sent"
         except Exception:
             delivery_status = "failed"
@@ -497,6 +500,69 @@ class AeternaIdentityService:
         return await self._activate_binding(
             db, binding, signed.operation, request_id, digest, notifier
         )
+
+    async def read_binding_status(
+        self,
+        db: AsyncSession,
+        payload: DeviceBindingStatusRequest,
+        document: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Read one binding only after proof from its exact stored device key."""
+        signed = payload.signed
+        request_id = signed.request_id
+        binding = await db.scalar(
+            select(AeternaDeviceBinding)
+            .where(
+                AeternaDeviceBinding.account_id == uuid.UUID(signed.account_id),
+                AeternaDeviceBinding.proposed_device_id == uuid.UUID(signed.device_id),
+            )
+            .order_by(
+                AeternaDeviceBinding.created_at.desc(),
+                AeternaDeviceBinding.id.desc(),
+            )
+            .limit(1)
+        )
+        if binding is None:
+            raise AeternaProtocolException(404, "device.binding_not_found", request_id)
+        public_key = self._public_key(signed.public_key, request_id)
+        if not secrets.compare_digest(
+            binding.public_key, public_key
+        ) or not verify_signature(
+            binding.public_key, document["signed"], payload.signature
+        ):
+            raise AeternaProtocolException(404, "device.binding_not_found", request_id)
+
+        state = binding.state
+        if state == "pending" and binding.expires_at <= self.clock():
+            state = "expired"
+        device = await db.scalar(
+            select(AeternaDevice).where(
+                AeternaDevice.account_id == binding.account_id,
+                AeternaDevice.id == binding.proposed_device_id,
+            )
+        )
+        if state == "active":
+            if device is None:
+                raise AeternaProtocolException(
+                    503, "service.temporarily_unavailable", request_id
+                )
+            state = device.status
+        data: dict[str, Any] = {
+            "account_id": signed.account_id,
+            "binding_id": str(binding.id),
+            "device_id": signed.device_id,
+            "state": state,
+            "observed_at": format_timestamp(self.clock()),
+        }
+        if state == "pending" and binding.challenge is not None:
+            data["challenge"] = encode_base64url(binding.challenge)
+            data["not_before"] = format_timestamp(binding.not_before)
+            data["expires_at"] = format_timestamp(binding.expires_at)
+        if state == "active":
+            data["active_device_count"] = await self._device_count(
+                db, binding.account_id, "active"
+            )
+        return data
 
     async def confirm_delayed_binding(
         self,
