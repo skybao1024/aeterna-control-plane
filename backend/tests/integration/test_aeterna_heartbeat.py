@@ -11,8 +11,10 @@ import pytest_asyncio
 import rfc8785
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, func, select
 
+from app.configs.docs_apps import create_client_app
 from app.db.base import get_session_local
 from app.exceptions.aeterna_protocol import AeternaProtocolException
 from app.models.account_policy import AccountPolicy, AccountPolicyOutboxEvent
@@ -29,7 +31,10 @@ from app.schemas.client.aeterna_protocol import (
     DeviceStatusChangeRequest,
     HeartbeatRequest,
 )
-from app.services.client.aeterna_heartbeat import AeternaHeartbeatService
+from app.services.client.aeterna_heartbeat import (
+    AeternaHeartbeatService,
+    get_aeterna_heartbeat_service,
+)
 from app.services.internal.account_policy_transition import (
     AccountPolicyTransitionHooks,
     AccountPolicyTransitionService,
@@ -310,6 +315,47 @@ async def test_concurrent_devices_aggregate_max_and_same_request_mutates_once():
         device = await db.get(AeternaDevice, device_ids[1])
     assert device.last_sequence == 2
     assert device.last_seen_at == second_clock.current
+
+
+async def test_signed_http_heartbeats_from_two_devices_share_one_account_receipt():
+    now, account_id, device_ids, keys = await seed_account(2)
+    clock = MutableClock(now + timedelta(seconds=1))
+    app = create_client_app()
+    app.dependency_overrides[get_aeterna_heartbeat_service] = (
+        lambda: AeternaHeartbeatService(clock=clock.now)
+    )
+    first_payload, first_document = heartbeat_document(
+        account_id, device_ids[0], keys[0], 1
+    )
+    second_payload, second_document = heartbeat_document(
+        account_id, device_ids[1], keys[1], 1
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://synthetic.test"
+    ) as client:
+        first = await client.post("/api/v1/heartbeats", json=first_document)
+        assert first.status_code == 200
+        assert first.headers["cache-control"] == "no-store"
+        assert first.json()["request_id"] == first_payload.signed.request_id
+        assert first.json()["data"]["accepted_sequence"] == 1
+
+        clock.advance(timedelta(seconds=1))
+        second = await client.post("/api/v1/heartbeats", json=second_document)
+        assert second.status_code == 200
+        assert second.json()["request_id"] == second_payload.signed.request_id
+        assert second.json()["data"]["accepted_at"] == "2030-01-01T00:00:02Z"
+
+        replay = await client.post("/api/v1/heartbeats", json=first_document)
+        assert replay.status_code == 200
+        assert replay.json()["data"] == first.json()["data"]
+
+    session_factory = get_session_local()
+    async with session_factory() as db:
+        account = await db.get(AeternaAccount, account_id)
+        first_device = await db.get(AeternaDevice, device_ids[0])
+        second_device = await db.get(AeternaDevice, device_ids[1])
+    assert account.last_activity_at == clock.current
+    assert first_device.last_sequence == second_device.last_sequence == 1
 
 
 async def test_lost_revoked_and_dormant_devices_cannot_extend_activity():

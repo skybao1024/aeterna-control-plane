@@ -66,7 +66,7 @@ async def submit_heartbeat(
         payload.signed.request_id,
         service.submit_heartbeat(db, payload, document),
     )
-    return protocol_response(payload.signed.request_id, data)
+    return protocol_response(payload.signed.request_id, data, no_store=True)
 
 
 @router.post(
