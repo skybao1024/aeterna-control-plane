@@ -20,6 +20,11 @@ class RouteConfig:
 # Client route configuration
 CLIENT_ROUTES = [
     RouteConfig(
+        module_path="app.api.client.v1.aeterna_setup",
+        prefix=f"{settings.API_V1_STR}",
+        tags=["owner-policy-setup"],
+    ),
+    RouteConfig(
         module_path="app.api.client.v1.aeterna_recovery",
         prefix=f"{settings.API_V1_STR}",
         tags=["delayed-recovery"],

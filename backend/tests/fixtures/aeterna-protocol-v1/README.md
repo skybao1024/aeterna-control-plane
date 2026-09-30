@@ -44,6 +44,21 @@ domains are not interchangeable with each other or with device binding. A
 heartbeat signs only account/device routing identifiers, a request identifier,
 and a positive monotonic sequence. It contains no client time or deadline.
 
+An active bound device configures an ACTIVE policy under
+`aeterna.policy.configure.v1` and reads current setup under
+`aeterna.setup.status.v1`. Policy timing starts at server receipt time. Setup
+status reports current policy and active-device record states without secrets.
+The setup status response and policy configuration response are never cached.
+
+M02 recovery enrollment uses `aeterna.recovery-record.enroll.v1` with an
+account-bound `erc_commitment`. The commitment is the base64url encoding of
+SHA-256 over the UTF-8 bytes `aeterna:erc-commitment:v1` followed by one zero
+byte, the 16 account UUID bytes, the current policy epoch and recovery
+generation as unsigned 32-bit big-endian integers, and the 16 raw ERC entropy
+bytes. The existing `recovery_record.provision` signature remains unchanged.
+The service stores only the digest and rejects a mismatched subsequent device.
+`setup.status` exposes `erc_committed`, never the digest or ERC.
+
 An active bound device provisions, confirms, or abandons one recovery record
 under operation-specific signed domains. Provisioning returns a 32-byte SRS
 once; confirmation binds the local wrapper digest. A released, accepted, and
@@ -65,7 +80,7 @@ the RFC 8785 canonical manifest without `release_digest`. The private control
 plane vendors this exact package, pins the release tag and digest, and runs the
 same fixtures.
 
-The prepared release is `1.4.0` with tag name `protocol-v1.4.0`; preparing the
+The prepared release is `1.5.0` with tag name `protocol-v1.5.0`; preparing the
 manifest does not create or publish a Git tag. Signed field changes and security
 semantic changes require a new major/versioned operation as defined by ADR 0012. The prior major remains supported for at least 180 days after a successor
 reaches general availability, with at least 90 days' sunset notice unless a

@@ -194,6 +194,13 @@ class InMemoryRecoveryKeyProvider:
 
 
 def get_recovery_key_provider() -> RecoveryKeyProvider:
+    if settings.AETERNA_RECOVERY_KEY_PROVIDER == "local-test":
+        if (
+            settings.ENV not in {"development", "test"}
+            or settings.AETERNA_RECOVERY_KMS_ENABLED
+        ):
+            raise RecoveryKeyUnavailable("Recovery key provider is unavailable")
+        return InMemoryRecoveryKeyProvider(_local_test_key())
     if (
         settings.AETERNA_RECOVERY_KEY_PROVIDER != "aws-kms"
         or not settings.AETERNA_RECOVERY_KMS_ENABLED
@@ -205,9 +212,32 @@ def get_recovery_key_provider() -> RecoveryKeyProvider:
     )
 
 
+def _local_test_key() -> bytes:
+    encoded = settings.AETERNA_RECOVERY_LOCAL_TEST_KEY
+    if re.fullmatch(r"[A-Za-z0-9_-]{43}", encoded) is None:
+        raise RecoveryKeyUnavailable("Recovery key configuration is invalid")
+    try:
+        decoded = base64.urlsafe_b64decode(encoded + "=")
+    except (ValueError, base64.binascii.Error):
+        raise RecoveryKeyUnavailable("Recovery key configuration is invalid") from None
+    if (
+        len(decoded) != SRS_BYTES
+        or base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("ascii") != encoded
+    ):
+        raise RecoveryKeyUnavailable("Recovery key configuration is invalid")
+    return decoded
+
+
 def validate_recovery_key_configuration() -> None:
     provider = settings.AETERNA_RECOVERY_KEY_PROVIDER
     if provider == "disabled" and not settings.AETERNA_RECOVERY_KMS_ENABLED:
+        return
+    if (
+        provider == "local-test"
+        and settings.ENV in {"development", "test"}
+        and not settings.AETERNA_RECOVERY_KMS_ENABLED
+    ):
+        _local_test_key()
         return
     if (
         provider != "aws-kms"

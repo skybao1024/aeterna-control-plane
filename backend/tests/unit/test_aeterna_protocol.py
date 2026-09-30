@@ -31,12 +31,19 @@ from app.schemas.client.aeterna_recovery import (
     OwnerRecoveryStartRequest,
     OwnerRecoveryVerifyRequest,
     RecoveryRecordActionRequest,
+    RecoveryRecordEnrollRequest,
     RecoveryRecordProvisionRequest,
     RecoveryRotationConfirmRequest,
     RecoveryRotationProvisionRequest,
     RecoveryRotationProvisionResponse,
     RecoveryRotationResponse,
     RecoverySecretResponse,
+)
+from app.schemas.client.aeterna_setup import (
+    PolicyConfigureRequest,
+    PolicyConfigureResponse,
+    SetupStatusRequest,
+    SetupStatusResponse,
 )
 from app.services.common.aeterna_security import (
     IdentityKeyUnavailable,
@@ -48,7 +55,7 @@ from app.services.common.aeterna_security import (
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "aeterna-protocol-v1"
 EXPECTED_PUBLIC_RELEASE_DIGEST = (
-    "6772a387715bcb170da99b82d3bcbe254d5c69fe2e1e129cf9d982d007f06274"
+    "04cc19dbd28a308debe8c2261ae6354eac6ac62e97e496214b29ad1c347f2e75"
 )
 
 
@@ -79,7 +86,7 @@ def make_request(body: bytes, content_type: str = "application/json") -> Request
 
 def test_vendored_public_release_digest_and_every_file_hash_match():
     manifest = load_json("manifest.json")
-    assert manifest["release_tag"] == "protocol-v1.4.0"
+    assert manifest["release_tag"] == "protocol-v1.5.0"
     assert manifest["release_digest"] == EXPECTED_PUBLIC_RELEASE_DIGEST
     for entry in manifest["files"]:
         content = (FIXTURE_ROOT / entry["path"]).read_bytes()
@@ -106,6 +113,12 @@ def test_python_jcs_and_ed25519_match_published_request_and_approval_vectors():
             DeviceBindingStatusRequest,
         ),
         ("fixtures/signatures/heartbeat-request.json", HeartbeatRequest),
+        ("fixtures/signatures/policy-configure.json", PolicyConfigureRequest),
+        ("fixtures/signatures/setup-status.json", SetupStatusRequest),
+        (
+            "fixtures/signatures/recovery-record-enroll.json",
+            RecoveryRecordEnrollRequest,
+        ),
         (
             "fixtures/signatures/device-status-change.json",
             DeviceStatusChangeRequest,
@@ -177,6 +190,12 @@ def test_python_jcs_matches_unicode_property_order_and_escaping_vector():
 
 
 def test_i10_published_success_responses_match_runtime_models():
+    PolicyConfigureResponse.model_validate(
+        load_json("fixtures/valid/policy-configure-response.json")
+    )
+    SetupStatusResponse.model_validate(
+        load_json("fixtures/valid/setup-status-response.json")
+    )
     DeviceBindingStatusResponse.model_validate(
         load_json("fixtures/valid/device-binding-status-response.json")
     )
@@ -307,14 +326,18 @@ def test_client_registry_exposes_only_v1_protocol_and_safe_config_routes():
     assert "app.api.client.v1.aeterna_identity" in configured_modules
     assert "app.api.client.v1.aeterna_heartbeat" in configured_modules
     assert "app.api.client.v1.aeterna_recovery" in configured_modules
+    assert "app.api.client.v1.aeterna_setup" in configured_modules
 
     client_app = create_client_app()
     paths = set(client_app.openapi()["paths"])
     assert "/api/v1/account-challenges" in paths
     assert "/api/v1/device-bindings" in paths
     assert "/api/v1/heartbeats" in paths
+    assert "/api/v1/policy" in paths
+    assert "/api/v1/setup/status" in paths
     assert "/api/v1/device-status-changes" in paths
     assert "/api/v1/recovery/records/provision" in paths
+    assert "/api/v1/recovery/records/enroll" in paths
     assert "/api/v1/recovery/records/{recovery_id}/confirm" in paths
     assert "/api/v1/recovery/records/{recovery_id}/abandon" in paths
     assert "/api/v1/recovery/claim/start" in paths

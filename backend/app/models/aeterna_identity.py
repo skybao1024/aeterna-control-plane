@@ -40,6 +40,15 @@ class AeternaAccount(BaseModel):
             "email_key_version > 0",
             name="ck_aeterna_accounts_email_key_version_positive",
         ),
+        CheckConstraint(
+            "(erc_commitment IS NULL AND erc_commitment_epoch IS NULL "
+            "AND erc_commitment_generation IS NULL) OR "
+            "(erc_commitment IS NOT NULL AND erc_commitment_epoch IS NOT NULL "
+            "AND erc_commitment_generation IS NOT NULL "
+            "AND octet_length(erc_commitment) = 32 AND erc_commitment_epoch > 0 "
+            "AND erc_commitment_generation > 0)",
+            name="ck_aeterna_accounts_erc_commitment",
+        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -51,6 +60,9 @@ class AeternaAccount(BaseModel):
     last_activity_at = Column(TIMESTAMP(timezone=True), nullable=True)
     current_policy_epoch = Column(Integer, nullable=False, default=1)
     current_recovery_generation = Column(Integer, nullable=False, default=1)
+    erc_commitment = Column(LargeBinary, nullable=True)
+    erc_commitment_epoch = Column(Integer, nullable=True)
+    erc_commitment_generation = Column(Integer, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
 
 

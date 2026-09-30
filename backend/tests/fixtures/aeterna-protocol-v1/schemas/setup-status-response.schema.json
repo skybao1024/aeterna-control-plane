@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:setup-status-response",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "$ref": "common.schema.json#/$defs/protocolVersion" },
+    "request_id": { "$ref": "common.schema.json#/$defs/uuid" },
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/uuid" },
+        "device_id": { "$ref": "common.schema.json#/$defs/uuid" },
+        "observed_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "erc_committed": { "type": "boolean" },
+        "policy": { "$ref": "policy-snapshot.schema.json" },
+        "devices": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "device_id": { "$ref": "common.schema.json#/$defs/uuid" },
+              "label": { "$ref": "common.schema.json#/$defs/deviceLabel" },
+              "state": {
+                "enum": ["not_enrolled", "pending", "complete"],
+                "type": "string"
+              }
+            },
+            "required": ["device_id", "state"],
+            "type": "object"
+          }
+        },
+        "local_record": {
+          "additionalProperties": false,
+          "properties": {
+            "recovery_id": { "$ref": "common.schema.json#/$defs/uuid" },
+            "vault_id": { "$ref": "common.schema.json#/$defs/uuid" },
+            "state": {
+              "enum": ["pending_confirmation", "sealed", "expired"],
+              "type": "string"
+            },
+            "expires_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+            "wrapper_digest": {
+              "$ref": "common.schema.json#/$defs/base64url32"
+            }
+          },
+          "required": ["recovery_id", "vault_id", "state", "expires_at"],
+          "type": "object",
+          "x-aeterna-constraint": "wrapper_digest exists exactly when state is sealed"
+        }
+      },
+      "required": [
+        "account_id",
+        "device_id",
+        "observed_at",
+        "devices",
+        "erc_committed"
+      ],
+      "type": "object"
+    }
+  },
+  "required": ["protocol_version", "request_id", "data"],
+  "type": "object"
+}

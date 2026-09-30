@@ -57,6 +57,10 @@ class AeternaRecoveryRecord(BaseModel):
             name="ck_aeterna_recovery_records_wrapper_digest_length",
         ),
         CheckConstraint(
+            "erc_commitment IS NULL OR octet_length(erc_commitment) = 32",
+            name="ck_aeterna_recovery_records_erc_commitment_length",
+        ),
+        CheckConstraint(
             "kms_context_version = 1 AND crypto_format_version = 1 "
             "AND recovery_context_version = 1",
             name="ck_aeterna_recovery_records_versions",
@@ -97,6 +101,7 @@ class AeternaRecoveryRecord(BaseModel):
     crypto_format_version = Column(Integer, nullable=False)
     recovery_context_version = Column(Integer, nullable=False)
     wrapper_digest = Column(LargeBinary, nullable=True)
+    erc_commitment = Column(LargeBinary, nullable=True)
     provision_request_id = Column(UUID(as_uuid=True), nullable=False)
     provision_request_digest = Column(LargeBinary, nullable=False)
     expires_at = Column(TIMESTAMP(timezone=True), nullable=False)

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:setup-status-request",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "$ref": "common.schema.json#/$defs/protocolVersion" },
+    "signed": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/uuid" },
+        "canonicalization": {
+          "$ref": "common.schema.json#/$defs/canonicalization"
+        },
+        "device_id": { "$ref": "common.schema.json#/$defs/uuid" },
+        "domain": { "const": "aeterna.setup.status.v1", "type": "string" },
+        "operation": { "const": "setup.status", "type": "string" },
+        "protocol_version": {
+          "$ref": "common.schema.json#/$defs/protocolVersion"
+        },
+        "request_id": { "$ref": "common.schema.json#/$defs/uuid" },
+        "signature_version": {
+          "$ref": "common.schema.json#/$defs/signatureVersion"
+        },
+        "vault_id": { "$ref": "common.schema.json#/$defs/uuid" }
+      },
+      "required": [
+        "account_id",
+        "canonicalization",
+        "device_id",
+        "domain",
+        "operation",
+        "protocol_version",
+        "request_id",
+        "signature_version"
+      ],
+      "type": "object"
+    },
+    "signature": { "$ref": "common.schema.json#/$defs/base64url64" }
+  },
+  "required": ["protocol_version", "signed", "signature"],
+  "type": "object"
+}

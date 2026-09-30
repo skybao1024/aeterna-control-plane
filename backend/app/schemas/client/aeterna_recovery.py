@@ -31,6 +31,24 @@ class RecoveryRecordProvisionRequest(ClosedModel):
     signature: Base64Url64
 
 
+class RecoveryRecordEnrollSigned(SignedHeader):
+    domain: Literal["aeterna.recovery-record.enroll.v1"]
+    operation: Literal["recovery_record.enroll"]
+    account_id: UuidString
+    device_id: UuidString
+    vault_id: UuidString
+    recovery_id: UuidString
+    crypto_format_version: Literal[1]
+    recovery_context_version: Literal[1]
+    erc_commitment: Base64Url32
+
+
+class RecoveryRecordEnrollRequest(ClosedModel):
+    protocol_version: Literal[1]
+    signed: RecoveryRecordEnrollSigned
+    signature: Base64Url64
+
+
 class RecoveryRecordActionSigned(SignedHeader):
     domain: Literal[
         "aeterna.recovery-record.confirm.v1",

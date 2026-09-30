@@ -16,6 +16,14 @@ AETERNA_RECOVERY_KMS_REGION=ap-southeast-1
 AETERNA_RECOVERY_KMS_KEY_ARN=
 ```
 
+For an isolated development service, `AETERNA_RECOVERY_KEY_PROVIDER=local-test`
+uses an injected `AETERNA_RECOVERY_LOCAL_TEST_KEY`. The key must be a canonical
+unpadded base64url encoding of 32 synthetic bytes and must remain stable across
+service restarts while its test records are needed. This adapter is rejected in
+`preview` and `production`, and it cannot be combined with
+`AETERNA_RECOVERY_KMS_ENABLED=true`. Keep the populated key in an uncommitted
+runtime environment file; never put it in the repository or a response.
+
 Production enablement requires all of the following values together:
 
 ```text

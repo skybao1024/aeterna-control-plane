@@ -26,6 +26,7 @@ from app.schemas.client.aeterna_recovery import (
     RecoveryClaimVerifyRequest,
     RecoveryClaimVerifyResponse,
     RecoveryRecordActionRequest,
+    RecoveryRecordEnrollRequest,
     RecoveryRecordProvisionRequest,
     RecoveryRecordProvisionResponse,
     RecoveryRecordResponse,
@@ -78,6 +79,26 @@ async def provision_recovery_record(
     payload, document = await parse_protocol_body(
         request, RecoveryRecordProvisionRequest
     )
+    data = await _database_call(
+        db,
+        payload.signed.request_id,
+        service.provision_record(db, payload, document),
+    )
+    return protocol_response(payload.signed.request_id, data, no_store=True)
+
+
+@router.post(
+    "/recovery/records/enroll",
+    response_model=RecoveryRecordProvisionResponse,
+    responses=PROTOCOL_ERROR_RESPONSES,
+    openapi_extra=openapi_request(RecoveryRecordEnrollRequest),
+)
+async def enroll_recovery_record(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    service: AeternaRecoveryService = Depends(get_aeterna_recovery_service),
+):
+    payload, document = await parse_protocol_body(request, RecoveryRecordEnrollRequest)
     data = await _database_call(
         db,
         payload.signed.request_id,

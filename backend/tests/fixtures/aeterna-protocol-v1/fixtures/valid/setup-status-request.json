@@ -1,0 +1,15 @@
+{
+  "protocol_version": 1,
+  "signed": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "canonicalization": "jcs-rfc8785",
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "domain": "aeterna.setup.status.v1",
+    "operation": "setup.status",
+    "protocol_version": 1,
+    "request_id": "00000000-0000-4000-8000-000000000061",
+    "signature_version": 1,
+    "vault_id": "00000000-0000-4000-8000-000000000062"
+  },
+  "signature": "bub18yD8FB58cm3Ouhl-Nc9ibw4HAAfYHsuTc-r6AproSSZa_vmsxAeSu_KTt-bEjpGaUOugkYasxD_LCXPDCg"
+}

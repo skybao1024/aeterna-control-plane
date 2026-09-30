@@ -1,0 +1,19 @@
+{
+  "protocol_version": 1,
+  "signed": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "canonicalization": "jcs-rfc8785",
+    "crypto_format_version": 1,
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "domain": "aeterna.recovery-record.enroll.v1",
+    "operation": "recovery_record.enroll",
+    "protocol_version": 1,
+    "recovery_context_version": 1,
+    "recovery_id": "00000000-0000-4000-8000-000000000041",
+    "request_id": "00000000-0000-4000-8000-000000000064",
+    "signature_version": 1,
+    "vault_id": "00000000-0000-4000-8000-000000000042",
+    "erc_commitment": "1sSgOYduJ46nJHRhCUbdeD97oauFIrkN8srRP05v3So"
+  },
+  "signature": "rehs7mh7ZZci7HIqLFuUDeqTxJO2eOVIM-H71rEyBAzGmQvbJubc0smbQIpmhzDlOkfWW2Jd0Q5kT3Cgbzl-BQ"
+}

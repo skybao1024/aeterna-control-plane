@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     AETERNA_RECOVERY_KMS_ENABLED: bool = False
     AETERNA_RECOVERY_KMS_REGION: str = "ap-southeast-1"
     AETERNA_RECOVERY_KMS_KEY_ARN: str = ""
+    AETERNA_RECOVERY_LOCAL_TEST_KEY: str = ""
 
     # Brevo configuration (alternative email provider)
     BREVO_API_KEY: str = ""

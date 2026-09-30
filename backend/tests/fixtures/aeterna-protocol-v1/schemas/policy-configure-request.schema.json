@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:policy-configure-request",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "$ref": "common.schema.json#/$defs/protocolVersion" },
+    "signed": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": { "$ref": "common.schema.json#/$defs/uuid" },
+        "canonicalization": {
+          "$ref": "common.schema.json#/$defs/canonicalization"
+        },
+        "device_id": { "$ref": "common.schema.json#/$defs/uuid" },
+        "domain": { "const": "aeterna.policy.configure.v1", "type": "string" },
+        "grace_days": { "minimum": 3, "maximum": 24855, "type": "integer" },
+        "inactivity_days": { "minimum": 14, "maximum": 365, "type": "integer" },
+        "operation": { "const": "policy.configure", "type": "string" },
+        "protocol_version": {
+          "$ref": "common.schema.json#/$defs/protocolVersion"
+        },
+        "request_id": { "$ref": "common.schema.json#/$defs/uuid" },
+        "signature_version": {
+          "$ref": "common.schema.json#/$defs/signatureVersion"
+        },
+        "warning_days": { "minimum": 3, "maximum": 30, "type": "integer" }
+      },
+      "required": [
+        "account_id",
+        "canonicalization",
+        "device_id",
+        "domain",
+        "grace_days",
+        "inactivity_days",
+        "operation",
+        "protocol_version",
+        "request_id",
+        "signature_version",
+        "warning_days"
+      ],
+      "type": "object",
+      "x-aeterna-constraint": "warning_days < inactivity_days"
+    },
+    "signature": { "$ref": "common.schema.json#/$defs/base64url64" }
+  },
+  "required": ["protocol_version", "signed", "signature"],
+  "type": "object"
+}

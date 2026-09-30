@@ -1,0 +1,39 @@
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000061",
+  "data": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "observed_at": "2030-01-02T03:04:05Z",
+    "erc_committed": true,
+    "policy": {
+      "epoch": 1,
+      "generation": 1,
+      "state": "ACTIVE",
+      "inactivity_days": 30,
+      "warning_days": 7,
+      "grace_days": 7,
+      "due_at": "2030-02-01T03:04:05Z",
+      "version": 0
+    },
+    "devices": [
+      {
+        "device_id": "00000000-0000-4000-8000-000000000003",
+        "label": "Owner Mac",
+        "state": "complete"
+      },
+      {
+        "device_id": "00000000-0000-4000-8000-000000000004",
+        "label": "Travel Mac",
+        "state": "not_enrolled"
+      }
+    ],
+    "local_record": {
+      "recovery_id": "00000000-0000-4000-8000-000000000063",
+      "vault_id": "00000000-0000-4000-8000-000000000062",
+      "state": "sealed",
+      "expires_at": "2030-01-03T03:04:05Z",
+      "wrapper_digest": "MzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM"
+    }
+  }
+}

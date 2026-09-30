@@ -1,5 +1,6 @@
 """Unit evidence for the single-Region recovery KMS boundary."""
 
+import base64
 import uuid
 
 import pytest
@@ -9,6 +10,7 @@ from app.services.common.aeterna_recovery_key import (
     AwsKmsRecoveryKeyProvider,
     InMemoryRecoveryKeyProvider,
     RecoveryKeyUnavailable,
+    get_recovery_key_provider,
     recovery_encryption_context,
     validate_recovery_key_configuration,
 )
@@ -125,5 +127,35 @@ def test_configuration_accepts_only_the_approved_disabled_or_singapore_boundary(
         "AETERNA_RECOVERY_KMS_KEY_ARN",
         "arn:aws:kms:ap-southeast-1:111122223333:key/mrk-example",
     )
+    with pytest.raises(RecoveryKeyUnavailable):
+        validate_recovery_key_configuration()
+
+
+def test_local_test_provider_survives_instance_restart_and_rejects_production(
+    monkeypatch,
+):
+    synthetic_key = base64.urlsafe_b64encode(bytes([0x42]) * 32).rstrip(b"=").decode()
+    monkeypatch.setattr(settings, "ENV", "development")
+    monkeypatch.setattr(settings, "AETERNA_RECOVERY_KEY_PROVIDER", "local-test")
+    monkeypatch.setattr(settings, "AETERNA_RECOVERY_KMS_ENABLED", False)
+    monkeypatch.setattr(settings, "AETERNA_RECOVERY_LOCAL_TEST_KEY", synthetic_key)
+    validate_recovery_key_configuration()
+
+    envelope = get_recovery_key_provider().generate_srs(context())
+    assert (
+        get_recovery_key_provider().decrypt_srs(
+            envelope.ciphertext, envelope.key_arn, context()
+        )
+        == envelope.plaintext
+    )
+
+    monkeypatch.setattr(settings, "ENV", "production")
+    with pytest.raises(RecoveryKeyUnavailable):
+        validate_recovery_key_configuration()
+    with pytest.raises(RecoveryKeyUnavailable):
+        get_recovery_key_provider()
+
+    monkeypatch.setattr(settings, "ENV", "development")
+    monkeypatch.setattr(settings, "AETERNA_RECOVERY_LOCAL_TEST_KEY", "invalid")
     with pytest.raises(RecoveryKeyUnavailable):
         validate_recovery_key_configuration()

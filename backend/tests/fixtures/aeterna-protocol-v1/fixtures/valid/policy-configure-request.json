@@ -1,0 +1,17 @@
+{
+  "protocol_version": 1,
+  "signed": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "canonicalization": "jcs-rfc8785",
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "domain": "aeterna.policy.configure.v1",
+    "grace_days": 7,
+    "inactivity_days": 30,
+    "operation": "policy.configure",
+    "protocol_version": 1,
+    "request_id": "00000000-0000-4000-8000-000000000060",
+    "signature_version": 1,
+    "warning_days": 7
+  },
+  "signature": "-w7THnudl_C60uCijSx4lHPdFerVvOnHfvcP-fcW0Ptm8sc1WxKkM_crG9VkV_TyA9E8i8rVvBQULQG_eC7eAg"
+}

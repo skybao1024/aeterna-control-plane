@@ -35,6 +35,7 @@ from app.schemas.client.aeterna_recovery import (
     RecoveryClaimStartRequest,
     RecoveryClaimVerifyRequest,
     RecoveryRecordActionRequest,
+    RecoveryRecordEnrollRequest,
     RecoveryRecordProvisionRequest,
     RecoveryRotationConfirmRequest,
     RecoveryRotationProvisionRequest,
@@ -105,7 +106,7 @@ class AeternaRecoveryService:
     async def provision_record(
         self,
         db: AsyncSession,
-        payload: RecoveryRecordProvisionRequest,
+        payload: RecoveryRecordProvisionRequest | RecoveryRecordEnrollRequest,
         document: dict[str, Any],
     ) -> dict[str, Any]:
         signed = payload.signed
@@ -142,6 +143,49 @@ class AeternaRecoveryService:
                 409, "recovery.record_unavailable", request_id
             )
         now = self._now()
+        commitment = (
+            decode_base64url(signed.erc_commitment, 32)
+            if isinstance(payload, RecoveryRecordEnrollRequest)
+            else None
+        )
+        if commitment is not None:
+            current_commitment = (
+                account.erc_commitment
+                if account.erc_commitment_epoch == account.current_policy_epoch
+                and account.erc_commitment_generation
+                == account.current_recovery_generation
+                else None
+            )
+            if current_commitment is not None and not secrets.compare_digest(
+                current_commitment, commitment
+            ):
+                raise AeternaProtocolException(409, "recovery.erc_mismatch", request_id)
+            if current_commitment is None:
+                legacy_sealed = await db.scalar(
+                    select(AeternaRecoveryRecord.id)
+                    .where(
+                        AeternaRecoveryRecord.account_id == account.id,
+                        AeternaRecoveryRecord.policy_epoch
+                        == account.current_policy_epoch,
+                        AeternaRecoveryRecord.recovery_generation
+                        == account.current_recovery_generation,
+                        AeternaRecoveryRecord.state == "sealed",
+                        AeternaRecoveryRecord.erc_commitment.is_(None),
+                    )
+                    .limit(1)
+                )
+                if legacy_sealed is not None:
+                    raise AeternaProtocolException(
+                        409, "recovery.legacy_enrollment", request_id
+                    )
+        elif (
+            account.erc_commitment is not None
+            and account.erc_commitment_epoch == account.current_policy_epoch
+            and account.erc_commitment_generation == account.current_recovery_generation
+        ):
+            raise AeternaProtocolException(
+                409, "recovery.record_unavailable", request_id
+            )
         existing = await db.scalar(
             select(AeternaRecoveryRecord)
             .where(
@@ -194,11 +238,16 @@ class AeternaRecoveryService:
                 kms_context_version=KMS_CONTEXT_VERSION,
                 crypto_format_version=signed.crypto_format_version,
                 recovery_context_version=signed.recovery_context_version,
+                erc_commitment=commitment,
                 provision_request_id=uuid.UUID(request_id),
                 provision_request_digest=digest,
                 expires_at=now + PROVISION_LIFETIME,
             )
             db.add(record)
+            if commitment is not None:
+                account.erc_commitment = commitment
+                account.erc_commitment_epoch = account.current_policy_epoch
+                account.erc_commitment_generation = account.current_recovery_generation
             self._audit(
                 db,
                 account.id,
@@ -231,7 +280,7 @@ class AeternaRecoveryService:
         signed = payload.signed
         account_id = uuid.UUID(signed.account_id)
         device_id = uuid.UUID(signed.device_id)
-        _account, policy, _device = await self._authorize_device(
+        account, policy, _device = await self._authorize_device(
             db,
             account_id,
             device_id,
@@ -284,6 +333,30 @@ class AeternaRecoveryService:
             record.state = "abandoned"
             record.abandoned_at = now
             event_type = "record.abandoned"
+            if record.erc_commitment is not None:
+                other_live = await db.scalar(
+                    select(AeternaRecoveryRecord.id)
+                    .where(
+                        AeternaRecoveryRecord.account_id == account.id,
+                        AeternaRecoveryRecord.id != record.id,
+                        AeternaRecoveryRecord.policy_epoch
+                        == account.current_policy_epoch,
+                        AeternaRecoveryRecord.recovery_generation
+                        == account.current_recovery_generation,
+                        (
+                            (AeternaRecoveryRecord.state == "sealed")
+                            | (
+                                (AeternaRecoveryRecord.state == "pending_confirmation")
+                                & (AeternaRecoveryRecord.expires_at > now)
+                            )
+                        ),
+                    )
+                    .limit(1)
+                )
+                if other_live is None:
+                    account.erc_commitment = None
+                    account.erc_commitment_epoch = None
+                    account.erc_commitment_generation = None
         record.updated_at = now
         self._audit(
             db,

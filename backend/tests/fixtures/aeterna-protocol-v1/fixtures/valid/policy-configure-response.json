@@ -1,0 +1,18 @@
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000060",
+  "data": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "observed_at": "2030-01-02T03:04:05Z",
+    "policy": {
+      "epoch": 1,
+      "generation": 1,
+      "state": "ACTIVE",
+      "inactivity_days": 30,
+      "warning_days": 7,
+      "grace_days": 7,
+      "due_at": "2030-02-01T03:04:05Z",
+      "version": 0
+    }
+  }
+}
