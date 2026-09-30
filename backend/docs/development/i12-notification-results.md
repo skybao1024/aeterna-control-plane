@@ -86,3 +86,15 @@ until they are satisfied, production sending remains disabled and fail closed.
 
 I13 recovery claims, OTP, ERC/SRS/VDK handling, recovery-secret delivery, and
 post-release retrieval remain outside I12.
+
+## M04 interface integration (2026-09-30)
+
+The desktop now signs I12 contact and template operations with its bound device.
+The public frontend serves `/contact-invitation` without the Owner route guard,
+reads the token from a URL fragment, removes that fragment from browser history,
+and submits accept or decline without an Owner session. Because the I12
+response is deliberately generic for invalid and replayed tokens, the page
+does not claim that a recipient was verified solely from `processed: true`;
+the signed Owner status remains authoritative. The isolated native, browser,
+Mailpit, and synthetic bounce journey is documented in the client repository's
+M04 result note.

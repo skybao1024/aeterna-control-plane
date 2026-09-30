@@ -1,0 +1,24 @@
+.page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.card {
+  width: 100%;
+  max-width: 560px;
+  padding: 32px;
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  background-color: var(--card-bg);
+  line-height: 1.6;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
