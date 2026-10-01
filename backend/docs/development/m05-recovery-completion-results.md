@@ -42,15 +42,70 @@ replay after a record is revoked.
 
 The disposable aeterna-m05-isolated Docker project uses Mailpit, separate data
 volumes, a smoke database distinct from m05_checks, and local-test KMS. Runtime
-secret environment values were never read or printed. Temporary ignored scripts
-inject a bounded clock through dependency providers and operate the existing
-scheduler and Outbox; they expose no HTTP control endpoint. Any injected warning
-proof is synthetic evidence, not human acknowledgement.
+secret environment values were never read or printed. Versioned fixture scripts
+`scripts/m05_acceptance_runtime.py` and `scripts/m05_acceptance_control.py`
+replace the initial disposable helpers. They inject a bounded clock through
+dependency providers and operate the existing scheduler and Outbox; they expose
+no HTTP control endpoint. Injected warning proof is explicitly synthetic and
+requires provider-accepted local SMTP evidence bound to the current warning
+cycle's structural Outbox event. It is not human acknowledgement.
 
-Both isolated native apps completed mailbox OTP; the second device's approval
-capsule was prepared in the first app. The Mac subsequently locked. Actual device approval and new master password
-entry await user handoff under the computer-use credential policy.
-No successful native claim, full rekey, fresh protection, shared-ERC enrollment,
-export/restore, or complete failure matrix is claimed yet. The desktop M05
-result ledger owns that final acceptance evidence. No production AWS, mail
-recipient, staging qualification, protocol tag, push, or production deployment was used.
+Both isolated native apps completed mailbox OTP, device approval, and Vault
+creation. The first ERC was subsequently confirmed without being retained;
+the second device was not enrolled. The Owner authorized autonomous synthetic
+credential/material management and disposal of test data. Both native apps
+were stopped before clock control, and the new Rust acceptance scenario uses
+fresh synthetic accounts and Vaults instead of that incomplete fixture.
+
+The opt-in desktop test
+`ipc::emergency::live_acceptance::two_device_live_recovery_and_rekey` drives
+actual signed HTTP requests, local SMTP, PostgreSQL policy/recovery services,
+SQLite encryption and transfer, and native Rust gate/journal helpers. Passwords,
+ERCs, OTPs, and link/claim factors are generated or received by the test, without
+human entry. Only its generated MP/ERC values are retained in a unique mode-0700
+temporary directory's mode-0600 `test-material.json`; no values are emitted or
+committed. The production journal remains free of secret factors.
+
+The fixture entry point fails closed unless development uses exactly
+`m05_smoke`, `local-test` recovery keys, disabled production email/KMS, and
+`mailpit:1025`. A deliberate `POSTGRES_DB=m05_checks` guard invocation was
+rejected before fixture actions. The fixed test addresses loopback ports
+8001/8027 and container `aeterna-m05-isolated-backend-1`. Stop isolated
+worker/beat and native heartbeat producers before running it. For the existing
+isolated Compose environment, pass its private file by both `--env-file` and
+`ENV_FILE`; do not inspect or dump its values. Use the runtime command:
+
+```sh
+python -m uvicorn scripts.m05_acceptance_runtime:app --host 0.0.0.0 --port 8001
+```
+
+The controller must run inside that backend container from `/app`; it accepts
+only the documented fixed actions and an account UUID. `begin-run` advances past
+existing challenge resend deadlines without disabling limits, and `reset-clock`
+is used after success and assertion failure. The desktop ledger records the
+explicit Cargo command and exact passing run evidence. Native credential/dialog
+and WebView interaction acceptance remains separate. No production AWS, real
+mail recipient, staging qualification, protocol tag, push, or deployment was
+used.
+
+## Passing self-managed live run
+
+The explicit desktop live acceptance test passed on 2026-10-01: 1 passed,
+0 failed, 213.67 seconds. It used two synthetic signing identities and separate
+Vaults on one Mac against the real isolated HTTP/SMTP/PostgreSQL services. It
+verified shared-ERC enrollment, mismatch refusal without SRS, confirmed/private
+recipient authority, valid-heartbeat warning cancellation, controlled
+warning/grace/release, both one-shot claims, wrong OTP/ERC/bindings, durable
+native Rust release gating, full rekey, password reuse/cancellation/interruption
+refusal, restart with pending confirmation, exact confirmation replay and
+commitment conflict, and successor account commitment continuity. B remains
+pending in rotation and not enrolled in successor setup. Historical released
+copies remain decryptable. Two independent A exports and one B export restored
+exact note/attachment bytes; wrong passwords, existing destinations, and a
+tampered package were refused. The fixture clock was reset after the run.
+
+Final changed-script Docker Black, Black-profile isort, and critical Flake8
+checks passed. These results do not change the existing repository-wide lint
+debt described above. The desktop ledger retains the exact test log and private
+artifact directory; it does not contain credentials. M05 remains In Progress
+while native interaction evidence is incomplete.
