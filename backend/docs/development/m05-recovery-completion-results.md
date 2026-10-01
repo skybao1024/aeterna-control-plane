@@ -144,3 +144,44 @@ factor entry, mandatory rekey, protection confirmation, and coupled interruption
 feedback on native-bound Vaults. UI creation/change of authentication
 credentials requires human entry/confirmation/submission under the computer-use
 tool policy; this does not require a broad user rerun of autonomous tests.
+
+## Original native fixture preparation and recipient regression (2026-10-01)
+
+Both original M05 native Vaults were unlocked by the Owner. Their original
+shared ERC had not been retained, so the second device could not enroll. Under
+the existing authorization to reset disposable development data, both Vaults
+were exported through their real native dialogs and the isolated m05_smoke
+PostgreSQL database was dumped privately. pg_restore --list parsed the dump
+successfully before any reset.
+
+A temporary ignored Docker-only script reused the guarded M05 runtime and
+required the fixed original native account, exactly the two named synthetic
+active devices, an ACTIVE epoch/generation-1 policy, exactly A's original
+sealed record, and no grants, Owner recovery requests, or rotations. A locked
+transaction retained the original record as revoked and cleared only its test
+account ERC commitment. No local Vault, MP, OS key, device identity, binding,
+policy timing, or production service changed; both encrypted database hashes
+remained identical. Preview, execution, Docker Black, and critical Flake8 checks
+passed. No reset API or production capability was introduced.
+
+The refreshed native interfaces enabled new enrollment. The Owner generated
+A's new native ERC, which was retained privately in the desktop artifact
+directory with mode 0600. Its value was not emitted. A's confirmation, B's
+shared-code entry/confirmation, and the coupled release/rekey journey remain
+pending; this is fixture preparation, not Accepted evidence.
+
+A synthetic confirm-now contact was created in native B and its invitation
+was delivered only to local Mailpit. A fresh recipient page incorrectly
+reported the valid link as invalid: StrictMode replayed the initialization
+effect after the hash was removed and replaced the captured token with null.
+ContactInvitation now preserves the captured token during effect replay;
+genuine hash changes still consume the new link and replace or clear it. The
+same invitation in a fresh page then displayed Accept and verify, completed
+submission, and native B confirmed accepted/verified status and local provider
+acceptance. A later invalid hash showed the error state. Before/after screenshots
+are retained privately in the desktop ledger's artifact directory.
+
+Frontend pnpm type-check, pnpm lint, and pnpm build passed. No test framework,
+production dependency, API contract, authentication condition, or English UI
+copy was changed. These checks do not substitute for the remaining native
+credential handoff and coupled journey.

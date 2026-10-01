@@ -24,7 +24,8 @@ export default function ContactInvitation() {
       setState(nextToken ? 'ready' : 'error');
     };
     window.addEventListener('hashchange', onHashChange);
-    onHashChange();
+    // StrictMode replays mount effects after the fragment has been removed.
+    if (currentToken.current === null) onHashChange();
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
