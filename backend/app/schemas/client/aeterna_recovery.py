@@ -323,6 +323,13 @@ class RecoveryRotationConfirmSigned(SignedHeader):
     operation: Literal["recovery_rotation.confirm"]
     account_id: UuidString
     device_id: UuidString
+    erc_commitment: Base64Url32 | None = Field(
+        default=None,
+        description=(
+            "Target account ERC commitment. Required for managed ERC accounts; "
+            "every device in the rotation must match it."
+        ),
+    )
     recovery_id: UuidString
     rotation_id: UuidString
     target_generation: Annotated[int, Field(ge=2)]

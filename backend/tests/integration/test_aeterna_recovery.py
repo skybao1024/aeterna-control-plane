@@ -1009,7 +1009,10 @@ async def test_policy_release_during_owner_cooldown_forces_successor_authorizati
     assert successor["rekey_required"] is True
 
 
-async def test_post_compromise_confirmation_preserves_released_epoch_and_grants():
+@pytest.mark.parametrize("managed_erc", [False, True])
+async def test_post_compromise_confirmation_preserves_released_epoch_and_grants(
+    managed_erc,
+):
     now = datetime(2030, 5, 2, tzinfo=UTC)
     clock = MutableClock(now)
     provider = recovery_provider()
@@ -1041,6 +1044,16 @@ async def test_post_compromise_confirmation_preserves_released_epoch_and_grants(
             )
         )
     await provision_and_confirm(service, fixture)
+    source_commitment = bytes([0x44]) * 32
+    target_commitment = bytes([0x45]) * 32
+    if managed_erc:
+        async with session_factory.begin() as db:
+            account = await db.get(AeternaAccount, fixture.account_id)
+            record = await db.get(AeternaRecoveryRecord, fixture.recovery_id)
+            account.erc_commitment = source_commitment
+            account.erc_commitment_epoch = 1
+            account.erc_commitment_generation = 1
+            record.erc_commitment = source_commitment
     await release_policy(fixture.account_id, now)
     async with session_factory() as db:
         assert (
@@ -1082,9 +1095,46 @@ async def test_post_compromise_confirmation_preserves_released_epoch_and_grants(
             "rotation_id": str(rotation_id),
             "target_generation": 2,
             "target_policy_epoch": 2,
+            **(
+                {"erc_commitment": encode_base64url(target_commitment)}
+                if managed_erc
+                else {}
+            ),
             "wrapper_digest": encode_base64url(bytes([0x77]) * 32),
         },
     )
+    if managed_erc:
+        missing_document = signed_document(
+            replace(fixture, recovery_id=target_recovery_id),
+            domain="aeterna.recovery-rotation.confirm.v1",
+            operation="recovery_rotation.confirm",
+            members={
+                key: value
+                for key, value in confirm_document["signed"].items()
+                if key
+                not in {
+                    "erc_commitment",
+                    "request_id",
+                    "domain",
+                    "operation",
+                    "account_id",
+                    "device_id",
+                    "vault_id",
+                    "recovery_id",
+                    "canonicalization",
+                    "signature_version",
+                    "protocol_version",
+                }
+            },
+        )
+        async with session_factory() as db:
+            with pytest.raises(AeternaProtocolException) as rejected:
+                await service.confirm_rotation(
+                    db,
+                    RecoveryRotationConfirmRequest.model_validate(missing_document),
+                    missing_document,
+                )
+        assert rejected.value.code == "recovery.erc_mismatch"
     async with session_factory() as db:
         result = await service.confirm_rotation(
             db,
@@ -1136,9 +1186,35 @@ async def test_post_compromise_confirmation_preserves_released_epoch_and_grants(
             "rotation_id": str(rotation_id),
             "target_generation": 2,
             "target_policy_epoch": 2,
+            **(
+                {"erc_commitment": encode_base64url(target_commitment)}
+                if managed_erc
+                else {}
+            ),
             "wrapper_digest": encode_base64url(bytes([0x78]) * 32),
         },
     )
+    if managed_erc:
+        wrong_document = signed_document(
+            second_fixture,
+            domain="aeterna.recovery-rotation.confirm.v1",
+            operation="recovery_rotation.confirm",
+            members={
+                "rotation_id": str(rotation_id),
+                "target_generation": 2,
+                "target_policy_epoch": 2,
+                "wrapper_digest": encode_base64url(bytes([0x78]) * 32),
+                "erc_commitment": encode_base64url(bytes([0x46]) * 32),
+            },
+        )
+        async with session_factory() as db:
+            with pytest.raises(AeternaProtocolException) as rejected:
+                await service.confirm_rotation(
+                    db,
+                    RecoveryRotationConfirmRequest.model_validate(wrong_document),
+                    wrong_document,
+                )
+        assert rejected.value.code == "recovery.erc_mismatch"
     async with session_factory() as db:
         result = await service.confirm_rotation(
             db,
@@ -1154,6 +1230,53 @@ async def test_post_compromise_confirmation_preserves_released_epoch_and_grants(
             confirm_document,
         )
     assert replayed["complete"] is True
+    if managed_erc:
+        conflicting_commitment = signed_document(
+            replace(fixture, recovery_id=target_recovery_id),
+            domain="aeterna.recovery-rotation.confirm.v1",
+            operation="recovery_rotation.confirm",
+            members={
+                "rotation_id": str(rotation_id),
+                "target_generation": 2,
+                "target_policy_epoch": 2,
+                "erc_commitment": encode_base64url(bytes([0x46]) * 32),
+                "wrapper_digest": encode_base64url(bytes([0x77]) * 32),
+            },
+        )
+        async with session_factory() as db:
+            with pytest.raises(AeternaProtocolException) as rejected:
+                await service.confirm_rotation(
+                    db,
+                    RecoveryRotationConfirmRequest.model_validate(
+                        conflicting_commitment
+                    ),
+                    conflicting_commitment,
+                )
+        assert rejected.value.code == "recovery.erc_mismatch"
+    wrong_vault = signed_document(
+        replace(fixture, recovery_id=target_recovery_id, vault_id=uuid.uuid4()),
+        domain="aeterna.recovery-rotation.confirm.v1",
+        operation="recovery_rotation.confirm",
+        members={
+            "rotation_id": str(rotation_id),
+            "target_generation": 2,
+            "target_policy_epoch": 2,
+            **(
+                {"erc_commitment": encode_base64url(target_commitment)}
+                if managed_erc
+                else {}
+            ),
+            "wrapper_digest": encode_base64url(bytes([0x77]) * 32),
+        },
+    )
+    async with session_factory() as db:
+        with pytest.raises(AeternaProtocolException) as rejected:
+            await service.confirm_rotation(
+                db,
+                RecoveryRotationConfirmRequest.model_validate(wrong_vault),
+                wrong_vault,
+            )
+    assert rejected.value.code == "recovery.rotation_unavailable"
     conflicting_confirm = signed_document(
         replace(fixture, recovery_id=target_recovery_id),
         domain="aeterna.recovery-rotation.confirm.v1",
@@ -1162,6 +1285,11 @@ async def test_post_compromise_confirmation_preserves_released_epoch_and_grants(
             "rotation_id": str(rotation_id),
             "target_generation": 2,
             "target_policy_epoch": 2,
+            **(
+                {"erc_commitment": encode_base64url(target_commitment)}
+                if managed_erc
+                else {}
+            ),
             "wrapper_digest": encode_base64url(bytes([0x7A]) * 32),
         },
     )
@@ -1194,6 +1322,10 @@ async def test_post_compromise_confirmation_preserves_released_epoch_and_grants(
             AeternaOwnerRecoveryRequest, uuid.UUID(authorization["owner_recovery_id"])
         )
         second_record = await db.get(AeternaRecoveryRecord, second_recovery_id)
+    assert account.erc_commitment == (target_commitment if managed_erc else None)
+    assert account.erc_commitment_epoch == (2 if managed_erc else None)
+    assert account.erc_commitment_generation == (2 if managed_erc else None)
+    assert second_record.erc_commitment == (target_commitment if managed_erc else None)
     assert account.current_policy_epoch == 2
     assert account.current_recovery_generation == 2
     assert [(policy.epoch, policy.state) for policy in policies] == [
@@ -1208,6 +1340,23 @@ async def test_post_compromise_confirmation_preserves_released_epoch_and_grants(
     assert second_record.device_id == second_device_id
     assert second_record.vault_id == second_vault_id
     assert second_record.state == "sealed"
+    # Later revocation must not turn an exact historical confirmation into a mutation.
+    async with session_factory.begin() as db:
+        retired = await db.get(AeternaRecoveryRecord, target_recovery_id)
+        retired.state = "revoked"
+        retired.abandoned_at = clock.current
+    async with session_factory() as db:
+        replayed = await service.confirm_rotation(
+            db,
+            RecoveryRotationConfirmRequest.model_validate(confirm_document),
+            confirm_document,
+        )
+    assert replayed["complete"] is True
+    async with session_factory() as db:
+        retired = await db.get(AeternaRecoveryRecord, target_recovery_id)
+        account = await db.get(AeternaAccount, fixture.account_id)
+    assert retired.state == "revoked"
+    assert account.current_policy_epoch == 2
 
 
 async def test_pre_release_erc_rotation_revokes_old_generation_on_activation():

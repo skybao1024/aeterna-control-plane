@@ -1,6 +1,7 @@
 {
   "protocol_version": 1,
   "signed": {
+    "erc_commitment": "aGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGg",
     "account_id": "00000000-0000-4000-8000-000000000020",
     "canonicalization": "jcs-rfc8785",
     "device_id": "00000000-0000-4000-8000-000000000003",
@@ -16,5 +17,5 @@
     "vault_id": "00000000-0000-4000-8000-000000000042",
     "wrapper_digest": "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY"
   },
-  "signature": "MRd6cBlUMIsFja1CiPZpcV5zjsUE4Ovzg_VFIyTDlXOPg6hg_ZRjQLUK0_aHwIx4LMjFSkugIVteePv4cwNWDA"
+  "signature": "viAROKv9d_lmoHPaxAlG4_XJ0ST7wEFLmauuEzFVtC_ukKBoi9-bpSdoc5yLTWB9uWsrhQjEg5_Ak8AKdojFDw"
 }

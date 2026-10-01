@@ -31,6 +31,7 @@ public client protocol.
 - [I12 contacts and email notification results](./development/i12-notification-results.md)
 - [I13 delayed recovery implementation results](./development/i13-delayed-recovery-results.md)
 - [I14 Owner recovery and rotation results](./development/i14-owner-recovery-rotation-results.md)
+- [M05 recovery completion checkpoint](./development/m05-recovery-completion-results.md)
 
 ## Security
 

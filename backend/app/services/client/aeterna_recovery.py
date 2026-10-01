@@ -1794,16 +1794,11 @@ class AeternaRecoveryService:
                 409, "recovery.rotation_unavailable", signed.request_id
             )
         wrapper_digest = decode_base64url(signed.wrapper_digest, 32)
-        if row.state == "complete":
-            if row.wrapper_digest is None or not secrets.compare_digest(
-                row.wrapper_digest, wrapper_digest
-            ):
-                raise AeternaProtocolException(
-                    409, "recovery.rotation_unavailable", signed.request_id
-                )
-            data = await self._rotation_data(db, rotation)
-            await db.rollback()
-            return data
+        commitment = (
+            decode_base64url(signed.erc_commitment, 32)
+            if signed.erc_commitment is not None
+            else None
+        )
         record = await db.scalar(
             select(AeternaRecoveryRecord)
             .where(
@@ -1816,10 +1811,44 @@ class AeternaRecoveryService:
             )
             .with_for_update()
         )
-        if record is None or record.state not in {"pending_confirmation", "sealed"}:
+        if record is None:
             raise AeternaProtocolException(
                 409, "recovery.rotation_unavailable", signed.request_id
             )
+        if row.state == "complete":
+            if row.wrapper_digest is None or not secrets.compare_digest(
+                row.wrapper_digest, wrapper_digest
+            ):
+                raise AeternaProtocolException(
+                    409, "recovery.rotation_unavailable", signed.request_id
+                )
+            if record.erc_commitment != commitment:
+                raise AeternaProtocolException(
+                    409, "recovery.erc_mismatch", signed.request_id
+                )
+            data = await self._rotation_data(db, rotation)
+            await db.rollback()
+            return data
+        if record.state not in {"pending_confirmation", "sealed"}:
+            raise AeternaProtocolException(
+                409, "recovery.rotation_unavailable", signed.request_id
+            )
+        if account.erc_commitment is not None and commitment is None:
+            raise AeternaProtocolException(
+                409, "recovery.erc_mismatch", signed.request_id
+            )
+        if rotation.state != "preparing":
+            expected = (
+                account.erc_commitment
+                if account.erc_commitment_epoch == rotation.target_policy_epoch
+                and account.erc_commitment_generation == rotation.target_generation
+                else None
+            )
+            if commitment != expected:
+                raise AeternaProtocolException(
+                    409, "recovery.erc_mismatch", signed.request_id
+                )
+        record.erc_commitment = commitment
         row.state = "complete"
         row.wrapper_digest = wrapper_digest
         row.completed_at = now
@@ -1905,6 +1934,13 @@ class AeternaRecoveryService:
                     owner_request.state = "completed"
                     owner_request.completed_at = now
                     owner_request.updated_at = now
+            account.erc_commitment = commitment
+            account.erc_commitment_epoch = (
+                rotation.target_policy_epoch if commitment is not None else None
+            )
+            account.erc_commitment_generation = (
+                rotation.target_generation if commitment is not None else None
+            )
             account.current_policy_epoch = rotation.target_policy_epoch
             account.current_recovery_generation = rotation.target_generation
             account.updated_at = now

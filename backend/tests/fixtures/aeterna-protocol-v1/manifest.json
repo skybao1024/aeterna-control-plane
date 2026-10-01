@@ -1,8 +1,8 @@
 {
   "manifest_version": 1,
   "protocol_version": 1,
-  "release": "1.5.0",
-  "release_tag": "protocol-v1.5.0",
+  "release": "1.6.0",
+  "release_tag": "protocol-v1.6.0",
   "files": [
     {
       "path": "errors.json",
@@ -106,7 +106,7 @@
     },
     {
       "path": "fixtures/signatures/recovery-rotation-confirm.json",
-      "sha256": "dc7104069d1c2caf49b6cda2ea7c08c4c598780548df11f3cde56e4d79f82902"
+      "sha256": "bf53cdf4bb628cb8cc6069dd8b2bc0fe7c320fe19a19f80ac32a72946b3bf7c8"
     },
     {
       "path": "fixtures/signatures/recovery-rotation-provision.json",
@@ -230,7 +230,7 @@
     },
     {
       "path": "fixtures/valid/recovery-rotation-confirm-request.json",
-      "sha256": "7965ed54bf2b337750d0fedcfa615a51c821becb1325860c44886cb7e695c07f"
+      "sha256": "b1224248ed3a0f7b731a63e7e419d9eab2c80e085473b780ff0d7f3382709ebb"
     },
     {
       "path": "fixtures/valid/recovery-rotation-provision-request.json",
@@ -262,7 +262,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "b7f9e92587d8f46d1d1485e45455b927451ed6a5405fcace7d040c1647b66b71"
+      "sha256": "a80f7d1bc2240f14a102397f0450b92c0148262ef86e6ae75aee2c8125f24e40"
     },
     {
       "path": "schemas/account-challenge-request.schema.json",
@@ -402,7 +402,7 @@
     },
     {
       "path": "schemas/recovery-rotation-confirm-request.schema.json",
-      "sha256": "6cf0444f2f8582675bb82be796ee83afb78f62ae590b2163f1963757b8cc80d6"
+      "sha256": "64d70e8d69ecaabc44c04239e9a3c7cf97527c893172ae3d7a9d86210a2b5da2"
     },
     {
       "path": "schemas/recovery-rotation-provision-request.schema.json",
@@ -433,5 +433,5 @@
       "sha256": "851ac5fad6c2cfb53fa2854186a5472e758ec302b2bb422dba9a59c44ae3a188"
     }
   ],
-  "release_digest": "04cc19dbd28a308debe8c2261ae6354eac6ac62e97e496214b29ad1c347f2e75"
+  "release_digest": "1e8ebccc13cd84c93f7280d44d2e4a1f4bcdbe79512ca8a0970bea9c2750dde4"
 }

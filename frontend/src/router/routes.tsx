@@ -11,6 +11,7 @@ const NotFound: FC = () => <div>404 - Not Found</div>;
 const Home = lazy(() => import('../pages/Home'));
 const Login = lazy(() => import('../pages/Login'));
 const ContactInvitation = lazy(() => import('../pages/ContactInvitation'));
+const RecoveryClaim = lazy(() => import('../pages/RecoveryClaim'));
 
 // Loading spinner component
 const LoadingSpinner: FC = () => <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>;
@@ -39,6 +40,10 @@ const routes: RouteObject[] = [
   {
     path: PATHS.login,
     element: withSuspense(Login),
+  },
+  {
+    path: '/recovery-claim',
+    element: withSuspense(RecoveryClaim),
   },
   {
     path: '/contact-invitation',

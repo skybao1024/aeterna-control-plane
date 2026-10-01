@@ -73,6 +73,14 @@ rotations use separate provision and confirm domains. Owner recovery is bound to
 one exact recovery wrapper. Post-compromise confirmation advances an immutable
 policy epoch and always reports `rekey_required` before old material can be used.
 
+Rotation confirmation optionally carries the target-generation ERC commitment.
+M02-enrolled accounts require it. The service atomically establishes it when the
+initiating wrapper confirms and requires matching later devices and exact duplicate
+confirmations. The commitment uses the same account-bound computation above,
+with the target epoch/generation. ADR 0019 explicitly approves this additive
+exception to the general signed-field versioning rule for the M02/I14 integration.
+Legacy signed documents remain byte-for-byte compatible.
+
 ## Publication and compatibility
 
 `manifest.json` hashes every normative file and contains a release digest over
@@ -80,7 +88,7 @@ the RFC 8785 canonical manifest without `release_digest`. The private control
 plane vendors this exact package, pins the release tag and digest, and runs the
 same fixtures.
 
-The prepared release is `1.5.0` with tag name `protocol-v1.5.0`; preparing the
+The prepared release is `1.6.0` with tag name `protocol-v1.6.0`; preparing the
 manifest does not create or publish a Git tag. Signed field changes and security
 semantic changes require a new major/versioned operation as defined by ADR 0012. The prior major remains supported for at least 180 days after a successor
 reaches general availability, with at least 90 days' sunset notice unless a

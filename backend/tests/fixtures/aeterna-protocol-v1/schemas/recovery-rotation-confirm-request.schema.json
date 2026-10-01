@@ -3,33 +3,68 @@
   "$id": "urn:aeterna:protocol:v1:recovery-rotation-confirm-request",
   "additionalProperties": false,
   "properties": {
-    "protocol_version": { "$ref": "common.schema.json#/$defs/protocolVersion" },
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocolVersion"
+    },
     "signed": {
       "additionalProperties": false,
       "properties": {
-        "account_id": { "$ref": "common.schema.json#/$defs/uuid" },
+        "account_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
         "canonicalization": {
           "$ref": "common.schema.json#/$defs/canonicalization"
         },
-        "device_id": { "$ref": "common.schema.json#/$defs/uuid" },
+        "device_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
         "domain": {
           "const": "aeterna.recovery-rotation.confirm.v1",
           "type": "string"
         },
-        "operation": { "const": "recovery_rotation.confirm", "type": "string" },
+        "operation": {
+          "const": "recovery_rotation.confirm",
+          "type": "string"
+        },
         "protocol_version": {
           "$ref": "common.schema.json#/$defs/protocolVersion"
         },
-        "recovery_id": { "$ref": "common.schema.json#/$defs/uuid" },
-        "request_id": { "$ref": "common.schema.json#/$defs/uuid" },
-        "rotation_id": { "$ref": "common.schema.json#/$defs/uuid" },
+        "recovery_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "request_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "rotation_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
         "signature_version": {
           "$ref": "common.schema.json#/$defs/signatureVersion"
         },
-        "target_generation": { "minimum": 2, "type": "integer" },
-        "target_policy_epoch": { "minimum": 1, "type": "integer" },
-        "vault_id": { "$ref": "common.schema.json#/$defs/uuid" },
-        "wrapper_digest": { "$ref": "common.schema.json#/$defs/base64url32" }
+        "target_generation": {
+          "minimum": 2,
+          "type": "integer"
+        },
+        "target_policy_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "vault_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "wrapper_digest": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        },
+        "erc_commitment": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/base64url32"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
       },
       "required": [
         "account_id",
@@ -49,7 +84,9 @@
       ],
       "type": "object"
     },
-    "signature": { "$ref": "common.schema.json#/$defs/base64url64" }
+    "signature": {
+      "$ref": "common.schema.json#/$defs/base64url64"
+    }
   },
   "required": ["protocol_version", "signed", "signature"],
   "type": "object"
