@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.core.config import settings
+from app.db.base import get_engine
 from app.route import create_app
 from app.services.client.aeterna_heartbeat import (
     AeternaHeartbeatService,
@@ -71,6 +72,11 @@ class Clock:
 
 
 require_isolated_fixture()
+# Development SQL echo can expose encrypted factors and authentication data.
+# Both the API runtime and CLI control import this guarded module.
+engine = get_engine()
+engine.echo = False
+engine.sync_engine.hide_parameters = True
 clock = Clock()
 app = create_app()
 for dependency, service in (

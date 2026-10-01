@@ -109,3 +109,38 @@ checks passed. These results do not change the existing repository-wide lint
 debt described above. The desktop ledger retains the exact test log and private
 artifact directory; it does not contain credentials. M05 remains In Progress
 while native interaction evidence is incomplete.
+
+## Autonomous interface evidence (2026-10-01)
+
+The actual recipient page processed two unused links for the live fixture's
+verified synthetic private recipient. Wrong OTP entry was rejected; separate
+fresh mailbox codes produced handoffs for the same account and distinct device
+and Vault IDs. The scope was recovery.srs.read; no ERC or SRS was displayed.
+URL fragments were removed and refreshing cleared the bearer.
+
+Through M05a's actual native file dialogs, two separately created UI exports
+were each restored into empty targets, unlocked with existing generated
+passwords, and inspected for exact synthetic note and attachment content.
+An incorrect password and tampered package were refused. The native transfer
+dialog initially hid its detailed localized error behind the overlay; that
+defect was fixed and rechecked in English and Simplified Chinese after a
+rebuild. The original encrypted Vault was restored with an identical SHA-256,
+and both updated native apps retained active bindings and locked original
+Vaults. This transfer evidence does not establish a coupled native
+release/factor/rekey journey; source Vault lineage was preserved.
+
+The guarded fixture runtime now disables development SQL echo and hides bound
+parameters before database actions. A real controller pump emitted only its
+bounded result. Docker Black, Black-profile isort, critical Flake8, the
+wrong-database rejection, and boolean logging/clock checks passed. The isolated
+API was restarted with the fix and its clock remained reset. Production
+database logging and application entry points were not changed.
+
+The desktop ledger records exact export/candidate hashes, private artifact
+paths, native screenshots, the failing-before/passing-after UI regression,
+and a passing final npm run check plus unsigned and configured native builds.
+M05 still requires shared ERC entry/confirmation, release observation, local
+factor entry, mandatory rekey, protection confirmation, and coupled interruption
+feedback on native-bound Vaults. UI creation/change of authentication
+credentials requires human entry/confirmation/submission under the computer-use
+tool policy; this does not require a broad user rerun of autonomous tests.
