@@ -1,6 +1,8 @@
 # M05 recovery completion checkpoint
 
-Updated: 2026-10-01. M05 remains In Progress pending real desktop acceptance.
+Updated: 2026-10-02. M05 is Accepted for its declared development scope.
+The internal MVP is feature-complete; staging and release qualification remain open.
+Desktop acceptance checkpoint: `cf4568d` on `main`.
 
 ## Approved contract and implementation
 
@@ -50,8 +52,8 @@ no HTTP control endpoint. Injected warning proof is explicitly synthetic and
 requires provider-accepted local SMTP evidence bound to the current warning
 cycle's structural Outbox event. It is not human acknowledgement.
 
-Both isolated native apps completed mailbox OTP, device approval, and Vault
-creation. The first ERC was subsequently confirmed without being retained;
+At the initial checkpoint, both isolated native apps completed mailbox OTP,
+device approval, and Vault creation. The first ERC was confirmed without being retained;
 the second device was not enrolled. The Owner authorized autonomous synthetic
 credential/material management and disposal of test data. Both native apps
 were stopped before clock control, and the new Rust acceptance scenario uses
@@ -107,8 +109,8 @@ tampered package were refused. The fixture clock was reset after the run.
 Final changed-script Docker Black, Black-profile isort, and critical Flake8
 checks passed. These results do not change the existing repository-wide lint
 debt described above. The desktop ledger retains the exact test log and private
-artifact directory; it does not contain credentials. M05 remains In Progress
-while native interaction evidence is incomplete.
+artifact directory; it does not contain credentials. At that checkpoint M05
+remained In Progress while native interaction evidence was incomplete.
 
 ## Autonomous interface evidence (2026-10-01)
 
@@ -166,9 +168,11 @@ passed. No reset API or production capability was introduced.
 
 The refreshed native interfaces enabled new enrollment. The Owner generated
 A's new native ERC, which was retained privately in the desktop artifact
-directory with mode 0600. Its value was not emitted. A's confirmation, B's
-shared-code entry/confirmation, and the coupled release/rekey journey remain
-pending; this is fixture preparation, not Accepted evidence.
+directory with mode 0600. Its value was not emitted. The Owner subsequently
+completed B's same-code entry and both native confirmations. Fresh native
+reads confirmed recovery protection on every eligible device. The coupled
+claim/rekey journey remains incomplete; enrollment alone is not Accepted
+evidence.
 
 A synthetic confirm-now contact was created in native B and its invitation
 was delivered only to local Mailpit. A fresh recipient page incorrectly
@@ -185,3 +189,100 @@ Frontend pnpm type-check, pnpm lint, and pnpm build passed. No test framework,
 production dependency, API contract, authentication condition, or English UI
 copy was changed. These checks do not substitute for the remaining native
 credential handoff and coupled journey.
+
+
+## Original native account warning and release checkpoint (2026-10-01)
+
+A's actual native policy controls accepted 14-day inactivity, 3-day warning,
+and 3-day grace. Both native applications were quit through their menus and
+subsequently verified stopped before controlled time advancement. The guarded
+Docker controller ran the existing scheduler, delivered the current-cycle
+Owner warning to local Mailpit, recorded explicitly synthetic warning proof,
+and advanced through GRACE_PERIOD to RELEASED. Read-only proof then confirmed
+two available grants and two active, unexpired links. No factors, bearer
+values, or message bodies were emitted. SMTP acceptance and synthetic proof
+are not proof of human receipt.
+
+The desktop retained private note/attachment and encrypted-frame baselines
+before local rekey. Native release observation stopped because macOS is
+locked and the computer-use tool requires manual OS unlock. The fixture clock
+remains advanced for the pending controlled claim journey and must be reset
+after that run. Original native claim, mandatory rekey, fresh confirmation,
+and coupled interruption feedback remain unverified; M05 is In Progress.
+
+
+## Original native acceptance completion (2026-10-02)
+
+The Owner unlocked macOS and both original native apps observed RELEASED.
+The actual recipient page rejected a wrong OTP, then returned B's bounded
+handoff after the correct local Mailpit challenge. Native A rejected that
+cross-device handoff. B refused a valid-format ERC from a different synthetic
+account, accepted the retained shared native ERC without a second SRS fetch,
+and reached mandatory rekey. Cancelling cleared memory and preserved all of
+B's encrypted frames while its persistent ordinary-unlock gate survived restart.
+
+Native A used its own link, contact OTP, and shared ERC. Owner start initially
+refused missing recent presence, as designed. A guarded development-only locked
+transaction temporarily set only the original A device's last_seen_at to the
+controlled clock. It required the exact two-device RELEASED epoch/generation-1
+account, both claimed grants, and no Owner request. The real bound native key
+then signed Owner start; the previous timestamp was immediately restored with
+an exact-marker condition. Private provenance confirms restoration. This
+synthetic presence precondition is not a server-accepted heartbeat or native
+activity evidence. No endpoint, production rule bypass, or retained mutation
+script was introduced. The independent passing Core live test exercised the
+actual recent signed-heartbeat requirement.
+
+The actual Owner mailbox OTP enabled a fresh successor proposal. The Owner
+entered/submitted the agent's privately retained synthetic new master password
+and confirmed separate retention of the newly displayed native ERC. A completed
+full local rekey and fresh protection confirmation. Service setup became ACTIVE
+at epoch/generation 2 with a target commitment and sealed record. A is complete;
+B remains not enrolled, with complete/pending rotation slots. Partial status
+was not represented as protection for both devices.
+
+Read-only desktop baselines show A's preserved Vault/device identities, changed
+recovery identity, higher master revision, changed wrappers/header, and changed
+ciphertext with generation increments for every item/attachment frame. A's
+restart unlocked with the new existing password. Two independent native exports
+were separately imported into empty targets and unlocked through the real UI;
+both preserved the original note digest and complete synthetic attachment.
+The original rekeyed source directory was restored byte-identically afterward.
+B's original ciphertext and both OS bindings were preserved.
+
+Both native apps stopped before the controlled clock was reset to zero.
+Read-only proof confirms ACTIVE epoch/generation 2, a present target commitment,
+one sealed target record, complete/pending slots, SQL echo disabled, and SQL
+parameters hidden. Native B subsequently observed current ordinary server time.
+The desktop now classifies its persistent recovery gate as vault_rekey_required
+and gives actionable bilingual recovery guidance. Owner-unavailable copy also
+explains the recent-presence prerequisite and possible request conflict. These
+presentation fixes do not change service authorization, protocols, or crypto.
+
+The desktop result ledger retains native screenshots, private artifact paths,
+exact export hashes, failing-before/passing-after regressions, canonical checks,
+and configured signed build results. Earlier dated sections are historical
+checkpoints, not outstanding native handoffs. M05's controlled native journey,
+two-copy restore, and critical refusal/interruption cases are complete. B needs
+another available authorization and its own full rekey after cancelling its
+one-shot claim; complete multi-device UX, Owner-forgot-MP, and independent ERC
+rotation remain M06. Controlled time/warning proof and synthetic presence do
+not qualify real mail receipt, production AWS/KMS, or hardware activity.
+No push, deployment, protocol tag, or release approval is claimed.
+
+
+Final desktop verification passed with 50 frontend tests and 178 Rust tests,
+format/lint/type/protocol/asset checks, Clippy, and all-target/all-feature Cargo
+check. Two intentional tests remain ignored in the default run; the isolated
+live scenario passed independently above and was not rerun for the final
+presentation/classification changes. Canonical and both configured native
+builds passed, and both signed bundles passed deep/strict codesign verification
+with the unchanged approved identity and device-scoped entitlements. Final A
+unlocked its preserved source with the new MP and matched the original note
+digest/attachment. Final B's separate synthetic password candidate hit the
+explicit persistent gate, cleared the field, and exposed no content; it was not
+B's correct old MP. The focused Rust regression separately verified correct-old-
+MP refusal before/after restart. Both apps were quit afterward; A's database
+remained byte-identical and B's encrypted frame digests/generations were unchanged.
+A final read-only clock check returned zero. Only authorized local checkpoint
+commits are made; no remote publication is performed.
