@@ -59,6 +59,22 @@ Operator browser -> Backoffice UI -> Backoffice API
   backed by KMS/HSM. Application database credentials must not be able to
   decrypt them by themselves.
 
+Production identity uses a separate customer-managed AWS KMS key to wrap three
+stable, independently generated application keys for PII encryption, lookup,
+and OTP/token derivation. A one-time setup container persists their ciphertext
+envelope in the `identity-keys` volume. Runtime containers mount it read-only
+and use decrypt-only AWS permissions. No plaintext production environment-key
+fallback is allowed. See backend ADR 0005 and the identity deployment guide.
+
+Production deployment uses GitHub-hosted CI to build and test immutable amd64
+images. A dedicated environment-scoped SSH identity transfers an image/config
+bundle to the host; a root-owned release wrapper serializes activation. Host
+Nginx terminates TLS for the API and console while all container ports remain
+on loopback. Application/worker traffic is paused before database backup and
+migration, and service health gates the active release pointer. Stable database,
+Redis, logs, and encrypted identity volumes survive all ordinary releases.
+AWS credentials and runtime secrets remain outside the checkout and images.
+
 ## Protocol-v1 identity boundary
 
 The registered desktop identity API is passwordless. An eight-digit mailbox

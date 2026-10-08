@@ -66,9 +66,12 @@ management uses `pnpm`.
 `./deploy.sh init` copies the root `.env.example` to the ignored root `.env`.
 Replace every example credential before any non-local deployment. Production
 must use TLS, restricted origins, isolated environments, and managed secrets.
-The I09 account identity module accepts explicit synthetic environment keys in
-development and tests only. Production startup fails closed until a separately
-approved KMS/HSM identity-key provider is implemented.
+The account identity module accepts explicit synthetic environment keys in
+development and tests only. Production and preview require a separately
+provisioned AWS KMS identity key and a durable ciphertext envelope. Startup
+fails closed when that configuration or KMS access is unavailable. Follow
+[`backend/docs/deployment/aws-kms-identity.md`](./backend/docs/deployment/aws-kms-identity.md)
+to initialize the envelope once and grant the application decrypt-only access.
 For local account binding, set `AETERNA_PII_KEY_V1`,
 `AETERNA_LOOKUP_KEY_V1`, and `AETERNA_OTP_KEY_V1` privately in the ignored
 runtime configuration. Each must be an independently generated 32-byte value
@@ -77,6 +80,75 @@ Do not share their values in diagnostics or support messages.
 
 Runtime environment files are confidential. Never commit them or paste their
 values into issues, logs, or AI conversations.
+
+## Production CI/CD
+
+The `Verify and deploy` GitHub Actions workflow tests pull requests and every
+push to the default `dev` branch. Deployment is an explicit manual run on `dev`
+with the `deploy` input enabled; it activates the exact tested commit in the
+`production` environment after dedicated CI access is authorized. Actions are
+pinned to official release commits. Production environment access is limited
+to `dev`; pull requests never receive deployment credentials.
+
+The public ingress is:
+
+- API: <https://api.aeternarelay.com>
+- Backoffice UI: <https://console.aeternarelay.com>
+- The root domain remains the product website.
+
+GitHub builds Linux amd64 images and runs backend tests with PostgreSQL and
+Redis, frontend type/lint checks, and release safety checks. A short-lived
+artifact contains only the production images and public Compose configuration.
+CI uploads it over pinned-host SSH to `/srv/aeterna-control-plane/incoming`;
+the host verifies its checksums, loads images, and calls `./deploy.sh release`.
+The server does not build source. The small-host overlay uses one API process,
+one Celery child, memory limits, bounded Redis memory, and rotated Docker logs.
+It preserves the application's established database pool sizes.
+
+The `production` GitHub environment requires:
+
+- Variables `DEPLOY_HOST` and `DEPLOY_USER`.
+- Secrets `DEPLOY_SSH_KEY` (a dedicated CI key) and `DEPLOY_KNOWN_HOSTS` (the
+  operator-verified SSH host key). Never use the operator's root PEM for CI.
+
+An operator installs Docker Engine and Compose on the Debian host, uploads
+`deployment/` plus the CI public key privately, then runs
+`deployment/bootstrap.sh <ci-public-key-file> <kms-region> <kms-key-arn>` as
+root. The bootstrap preserves existing secrets and unrelated websites. It
+creates host ingress, a separate certificate, and fresh random
+database/Redis/JWT secrets without displaying them. The restricted CI account
+is created only when CI SSH access is explicitly enabled. Runtime
+configuration stays in `/etc/aeterna/runtime.env` with mode `0600`. AWS profiles
+stay in the two separate `/etc/aeterna/aws-*` directories; neither application
+secrets nor AWS credentials enter GitHub, build contexts, or release artifacts.
+
+CI SSH access is opt-in: set `AETERNA_ENABLE_CI_SSH=1` for the bootstrap only
+after authorizing the persistent production deployment key. The default
+bootstrap prepares the host for an operator's first SSH activation without
+adding CI access. Until the environment secrets are authorized and installed,
+CI builds and tests releases; the operator can download a successful release
+artifact and activate it once over their existing SSH connection.
+
+Every release pauses application traffic and scheduled work, backs up
+PostgreSQL, preserves a copy of the encrypted identity envelope, applies
+migrations, and waits for all service health checks before updating
+`/srv/aeterna-control-plane/current`. The identity envelope is initialized only
+for a new database volume. An existing database without its original envelope
+fails closed. Releases briefly interrupt service; this single-host deployment
+does not provide zero downtime.
+
+Root-only backups and logs are kept under
+`/srv/aeterna-control-plane/backups` and `/var/log/aeterna-control-plane`.
+Configure encrypted off-host backups and periodically test restoration. Images
+and root-owned commit directories are retained for a reviewed rollback. To
+redeploy a prior commit, rerun its successful workflow; first review schema
+compatibility. Automatic database downgrades and volume deletion are prohibited.
+A failed migration or rollout stops the release and requires operator review;
+it does not restore old database state automatically.
+
+Production email and delayed-recovery delivery remain disabled until their
+separate SES and recovery-key setup is approved. Infrastructure health does
+not establish readiness of those external delivery flows.
 
 ## Architecture and boundaries
 

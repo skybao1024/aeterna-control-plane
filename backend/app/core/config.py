@@ -97,10 +97,15 @@ class Settings(BaseSettings):
     VERIFICATION_CODE_EXPIRE_SECONDS: int = 300  # 5 minutes
     VERIFICATION_CODE_COOLDOWN_SECONDS: int = 60  # 60 seconds cooldown
 
-    # Aeterna account identity keys. These environment-backed keys are allowed
-    # only for development and test environments. Production must use a
-    # separately approved KMS/HSM provider and therefore fails closed while
-    # that provider remains unconfigured.
+    # Identity uses stable KMS-wrapped application keys in production/preview.
+    # AWS credentials come from the SDK credential-provider chain, never here.
+    AETERNA_IDENTITY_KEY_PROVIDER: str = "environment"
+    AETERNA_IDENTITY_KMS_ENABLED: bool = False
+    AETERNA_IDENTITY_KMS_REGION: str = "ap-southeast-1"
+    AETERNA_IDENTITY_KMS_KEY_ARN: str = ""
+    AETERNA_IDENTITY_KMS_ENVELOPE_PATH: str = "/app/identity-keys/envelope.json"
+
+    # Plaintext identity keys are allowed only in development and tests.
     AETERNA_PII_KEY_V1: str = ""
     AETERNA_LOOKUP_KEY_V1: str = ""
     AETERNA_OTP_KEY_V1: str = ""

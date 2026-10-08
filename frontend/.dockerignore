@@ -6,6 +6,11 @@ coverage
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
+!.env.dev
+!.env.prod
+.aws/
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*

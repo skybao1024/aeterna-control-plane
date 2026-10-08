@@ -23,7 +23,10 @@ from app.services.common.aeterna_email_adapter import (
     validate_email_delivery_configuration,
 )
 from app.services.common.aeterna_recovery_key import validate_recovery_key_configuration
-from app.services.common.aeterna_security import validate_identity_key_configuration
+from app.services.common.aeterna_security import (
+    clear_identity_key_cache,
+    validate_identity_key_configuration,
+)
 from app.services.common.redis import redis_client
 from app.services.common.thread_pool import ThreadPoolService
 
@@ -79,6 +82,7 @@ async def lifespan(application: FastAPI):
     yield  # Application running period
 
     # Execute on shutdown
+    clear_identity_key_cache()
     if is_master_process():
         shutdown_logging()  # Close logging
 

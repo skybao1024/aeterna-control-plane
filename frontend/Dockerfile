@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:20-alpine
+ARG NODE_IMAGE=node:22-alpine
 ARG NGINX_IMAGE=nginx:alpine
 ARG NPM_REGISTRY=https://registry.npmjs.org
 

@@ -79,7 +79,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
       args:
-        NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
     environment:
       VITE_API_BASE_URL: /api

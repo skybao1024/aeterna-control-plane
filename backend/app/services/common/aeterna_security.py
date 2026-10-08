@@ -4,11 +4,14 @@ import base64
 import binascii
 import hashlib
 import hmac
+import os
 import secrets
+import threading
 import unicodedata
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import lru_cache
 
 import rfc8785
 from cryptography.exceptions import InvalidSignature
@@ -17,6 +20,12 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from email_validator import EmailNotValidError, validate_email
 
 from app.core.config import settings
+from app.services.common.aeterna_identity_key import (
+    IdentityKeyProviderUnavailable,
+    get_identity_key_provider,
+)
+
+_identity_key_cache_lock = threading.Lock()
 
 
 class IdentityKeyUnavailable(RuntimeError):
@@ -29,9 +38,9 @@ class InvalidEmail(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class AeternaIdentityKeys:
-    pii_key: bytes
-    lookup_key: bytes
-    otp_key: bytes
+    pii_key: bytes = field(repr=False)
+    lookup_key: bytes = field(repr=False)
+    otp_key: bytes = field(repr=False)
     version: int = 1
 
 
@@ -51,10 +60,43 @@ def _decode_key(value: str) -> bytes:
 
 
 def get_identity_keys() -> AeternaIdentityKeys:
-    """Load explicit development/test keys; production has no environment fallback."""
-    if settings.ENV == "production":
+    """Load stable application keys without a production plaintext fallback."""
+    configured_values = (
+        settings.AETERNA_PII_KEY_V1,
+        settings.AETERNA_LOOKUP_KEY_V1,
+        settings.AETERNA_OTP_KEY_V1,
+    )
+    if settings.ENV in {"production", "preview"}:
+        if (
+            settings.AETERNA_IDENTITY_KEY_PROVIDER != "aws-kms"
+            or not settings.AETERNA_IDENTITY_KMS_ENABLED
+            or any(configured_values)
+        ):
+            raise IdentityKeyUnavailable(
+                "Production and preview identity require a configured KMS/HSM "
+                "provider without plaintext environment keys"
+            )
+        try:
+            # Startup loads once; request handlers do not make blocking KMS calls.
+            # Prefork children must load their own complete keyset.
+            with _identity_key_cache_lock:
+                return _load_kms_identity_keys(
+                    settings.ENV,
+                    settings.AETERNA_IDENTITY_KMS_REGION,
+                    settings.AETERNA_IDENTITY_KMS_KEY_ARN,
+                    settings.AETERNA_IDENTITY_KMS_ENVELOPE_PATH,
+                    settings.AETERNA_RECOVERY_KMS_KEY_ARN,
+                    os.getpid(),
+                )
+        except IdentityKeyProviderUnavailable:
+            raise IdentityKeyUnavailable("Identity KMS key loading failed") from None
+    if (
+        settings.ENV not in {"development", "test"}
+        or settings.AETERNA_IDENTITY_KEY_PROVIDER != "environment"
+        or settings.AETERNA_IDENTITY_KMS_ENABLED
+    ):
         raise IdentityKeyUnavailable(
-            "Production Aeterna identity requires an approved KMS/HSM provider"
+            "Identity key provider configuration is unavailable"
         )
     return AeternaIdentityKeys(
         pii_key=_decode_key(settings.AETERNA_PII_KEY_V1),
@@ -63,14 +105,55 @@ def get_identity_keys() -> AeternaIdentityKeys:
     )
 
 
+@lru_cache(maxsize=1)
+def _load_kms_identity_keys(
+    environment: str,
+    region: str,
+    key_arn: str,
+    envelope_path: str,
+    recovery_key_arn: str,
+    process_id: int,
+) -> AeternaIdentityKeys:
+    """Cache a complete successful keyset under its non-secret configuration."""
+    material = get_identity_key_provider().load_keys(envelope_path)
+    return AeternaIdentityKeys(
+        pii_key=material.pii_key,
+        lookup_key=material.lookup_key,
+        otp_key=material.otp_key,
+        version=material.version,
+    )
+
+
+def clear_identity_key_cache() -> None:
+    """Drop cached key references when the application shuts down."""
+    with _identity_key_cache_lock:
+        _load_kms_identity_keys.cache_clear()
+
+
+def _reset_identity_key_cache_after_fork() -> None:
+    """Discard parent keys and a potentially held parent lock in a child."""
+    global _identity_key_cache_lock
+    _identity_key_cache_lock = threading.Lock()
+    _load_kms_identity_keys.cache_clear()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_identity_key_cache_after_fork)
+
+
 def validate_identity_key_configuration() -> None:
-    """Validate configured development keys and fail production startup closed."""
+    """Validate identity keys before serving traffic; fail closed on KMS errors."""
     configured_values = (
         settings.AETERNA_PII_KEY_V1,
         settings.AETERNA_LOOKUP_KEY_V1,
         settings.AETERNA_OTP_KEY_V1,
     )
-    if settings.ENV == "production" or any(configured_values):
+    if (
+        settings.ENV not in {"development", "test"}
+        or settings.AETERNA_IDENTITY_KEY_PROVIDER != "environment"
+        or settings.AETERNA_IDENTITY_KMS_ENABLED
+        or any(configured_values)
+    ):
         get_identity_keys()
 
 

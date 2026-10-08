@@ -26,8 +26,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create logs directory
-RUN mkdir -p logs
+# Create writable runtime directories before Docker initializes named volumes
+RUN mkdir -p logs identity-keys && chmod 700 identity-keys
 
 # Create non-root user to run application
 RUN useradd --create-home --shell /bin/bash app \

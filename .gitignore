@@ -23,6 +23,8 @@ frontend/coverage/
 *.log
 logs/
 backend/logs/
+backend/identity-keys/
+backend/shell/
 celerybeat-schedule*
 *.db
 *.sqlite*

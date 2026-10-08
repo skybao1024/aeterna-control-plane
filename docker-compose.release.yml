@@ -1,0 +1,20 @@
+# CI builds these exact commit-tagged images; the host never builds source.
+services:
+  backend:
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:${IMAGE_TAG:?Set IMAGE_TAG}
+    build: !reset null
+  celery-worker:
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:${IMAGE_TAG:?Set IMAGE_TAG}
+    build: !reset null
+  celery-beat:
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:${IMAGE_TAG:?Set IMAGE_TAG}
+    build: !reset null
+  identity-setup:
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:${IMAGE_TAG:?Set IMAGE_TAG}
+    build: !reset null
+  frontend:
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-frontend:${IMAGE_TAG:?Set IMAGE_TAG}
+    build: !reset null
+  flower:
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:${IMAGE_TAG:?Set IMAGE_TAG}
+    build: !reset null

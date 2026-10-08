@@ -1,0 +1,66 @@
+# Optional runtime limits for a two-core host with approximately 2 GiB RAM.
+x-service-logging: &service-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    mem_limit: 256m
+    cpus: 0.5
+    command: ["postgres", "-c", "shared_buffers=64MB"]
+    logging: *service-logging
+  redis:
+    mem_limit: 128m
+    cpus: 0.25
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+      - --maxmemory
+      - 96mb
+      - --maxmemory-policy
+      - noeviction
+    logging: *service-logging
+  backend:
+    mem_limit: 384m
+    cpus: 1.0
+    # Only trusted host ingress and the internal frontend can reach this port.
+    command:
+      - uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${API_PORT:-8001}"
+      - --workers
+      - "1"
+      - --proxy-headers
+      - --forwarded-allow-ips=*
+    logging: *service-logging
+  celery-worker:
+    mem_limit: 320m
+    cpus: 0.75
+    command:
+      - celery
+      - -A
+      - app.core.celery_app
+      - worker
+      - --loglevel=${CELERY_LOG_LEVEL:-info}
+      - --concurrency=1
+      - --max-tasks-per-child=100
+      - --max-memory-per-child=220000
+      - -Q
+      - celery,scheduled_tasks
+    logging: *service-logging
+  celery-beat:
+    mem_limit: 128m
+    cpus: 0.25
+    logging: *service-logging
+  frontend:
+    mem_limit: 64m
+    cpus: 0.25
+    logging: *service-logging

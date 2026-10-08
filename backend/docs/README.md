@@ -12,6 +12,7 @@ public client protocol.
 - [ADR 0002: Warning, grace, and transactional Outbox state machine](./architecture/adr/0002-warning-grace-outbox-state-machine.md)
 - [ADR 0003: Contact consent and email delivery boundary](./architecture/adr/0003-contact-consent-and-email-delivery-boundary.md)
 - [ADR 0004: Delayed recovery KMS and claim boundary](./architecture/adr/0004-delayed-recovery-kms-and-claim-boundary.md)
+- [ADR 0005: Production identity KMS envelope](./architecture/adr/0005-production-identity-kms-envelope.md)
 
 ## API
 
@@ -21,6 +22,7 @@ public client protocol.
 
 - [AWS SES production email boundary](./deployment/aws-ses.md)
 - [AWS KMS delayed-recovery boundary](./deployment/aws-kms-recovery.md)
+- [AWS KMS production identity setup](./deployment/aws-kms-identity.md)
 
 ## Development
 

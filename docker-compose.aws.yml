@@ -1,0 +1,33 @@
+# Opt-in AWS SDK profiles for hosts without an EC2 instance role.
+# AWS_CONFIG_DIRECTORY is external to the repository and never enters an image.
+x-aws-profiles: &aws-profiles
+  AWS_PROFILE: ${AETERNA_AWS_PROFILE:-aeterna-runtime}
+  AWS_CONFIG_FILE: /home/app/.aws/config
+  AWS_SHARED_CREDENTIALS_FILE: /home/app/.aws/credentials
+  AWS_EC2_METADATA_DISABLED: "true"
+
+x-aws-directory: &aws-directory
+  type: bind
+  source: ${AWS_CONFIG_DIRECTORY:?Set AWS_CONFIG_DIRECTORY to an external AWS profile directory}
+  target: /home/app/.aws
+  read_only: true
+  bind:
+    create_host_path: false
+
+services:
+  backend:
+    environment: *aws-profiles
+    volumes:
+      - *aws-directory
+  celery-worker:
+    environment: *aws-profiles
+    volumes:
+      - *aws-directory
+  celery-beat:
+    environment: *aws-profiles
+    volumes:
+      - *aws-directory
+  identity-setup:
+    environment: *aws-profiles
+    volumes:
+      - *aws-directory
