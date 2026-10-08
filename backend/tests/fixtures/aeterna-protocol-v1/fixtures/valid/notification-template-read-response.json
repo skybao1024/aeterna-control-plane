@@ -1,0 +1,10 @@
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000071",
+  "data": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "field": "owner_message",
+    "version": 0,
+    "message": ""
+  }
+}

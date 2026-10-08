@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:notification-template-edit-request",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "signed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canonicalization": {
+          "const": "jcs-rfc8785",
+          "type": "string"
+        },
+        "domain": {
+          "const": "aeterna.notification-template.edit.v1",
+          "type": "string"
+        },
+        "operation": {
+          "const": "notification_template.edit",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "signature_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "request_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "account_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "authorizing_device_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "field": {
+          "type": "string",
+          "enum": ["owner_message", "contact_message"]
+        },
+        "expected_version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483646
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 4096,
+          "x-aeterna-max-utf8-bytes": 4096,
+          "x-aeterna-normalization": "NFC",
+          "x-aeterna-controls": "Only newline and tab are permitted."
+        }
+      },
+      "required": [
+        "canonicalization",
+        "domain",
+        "operation",
+        "protocol_version",
+        "signature_version",
+        "request_id",
+        "account_id",
+        "authorizing_device_id",
+        "field",
+        "expected_version",
+        "message"
+      ]
+    },
+    "signature": {
+      "$ref": "common.schema.json#/$defs/base64url64"
+    }
+  },
+  "required": ["protocol_version", "signed", "signature"]
+}

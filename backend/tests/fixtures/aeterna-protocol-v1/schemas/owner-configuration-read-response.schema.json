@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:owner-configuration-read-response",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "request_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "owner_email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 254,
+          "x-aeterna-max-utf8-bytes": 254
+        },
+        "contacts": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "contact_id": {
+                "$ref": "common.schema.json#/$defs/uuid"
+              },
+              "email": {
+                "type": ["string", "null"],
+                "minLength": 3,
+                "maxLength": 254,
+                "x-aeterna-max-utf8-bytes": 254
+              }
+            },
+            "required": ["contact_id", "email"]
+          }
+        }
+      },
+      "required": ["account_id", "owner_email", "contacts"]
+    }
+  },
+  "required": ["protocol_version", "request_id", "data"]
+}

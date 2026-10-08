@@ -1,12 +1,12 @@
 {
   "manifest_version": 1,
   "protocol_version": 1,
-  "release": "1.6.0",
-  "release_tag": "protocol-v1.6.0",
+  "release": "1.7.0",
+  "release_tag": "protocol-v1.7.0",
   "files": [
     {
       "path": "errors.json",
-      "sha256": "67642d0545d893965b63f9aa5e7f39db09de44c20365b7cf121f28602c015fef"
+      "sha256": "63d8fa294213447acbb65e2d0c55f8b37108c4a0508874b3ec6bf4d41502903b"
     },
     {
       "path": "fixtures/invalid/account-challenge-duplicate-member.json",
@@ -27,6 +27,18 @@
     {
       "path": "fixtures/invalid/heartbeat-request-forbidden-data.json",
       "sha256": "dde8c921026a16f8b193dabfe2ab6f5c4c8dce96a2778a3969e204f0751ddb7b"
+    },
+    {
+      "path": "fixtures/invalid/notification-template-edit-extra-field.json",
+      "sha256": "876663a919aa2cee86462b6ec51e7d91e04327ce529edcb81632c3d5691c303b"
+    },
+    {
+      "path": "fixtures/invalid/notification-template-read-extra-field.json",
+      "sha256": "d7a5a93e9da494a4ea529661b03816c2c1b2210d01006f46379548f040098f9b"
+    },
+    {
+      "path": "fixtures/invalid/owner-configuration-read-extra-field.json",
+      "sha256": "543f424543beec7e9722359917de86a6073838e001f9e5eb6ba2ccd6b42ec727"
     },
     {
       "path": "fixtures/invalid/owner-recovery-start-forbidden-data.json",
@@ -79,6 +91,30 @@
     {
       "path": "fixtures/signatures/jcs-unicode-and-escaping.json",
       "sha256": "3aa9f050426b39e7efcfc86fdb3a15db30e018202d3a8f723abc178c52a7348e"
+    },
+    {
+      "path": "fixtures/signatures/notification-template-edit-cross-domain.json",
+      "sha256": "51e7d1ea4a88ecc83fd1dbe7e3061d2da264ddb3eb3b56b49c3017b1edbf8de3"
+    },
+    {
+      "path": "fixtures/signatures/notification-template-edit.json",
+      "sha256": "ec21b84940b3e30ae322e3e60e6159016b0f3700a8206674e52888228c73e34f"
+    },
+    {
+      "path": "fixtures/signatures/notification-template-read-cross-domain.json",
+      "sha256": "0b43350d5714d0a08d1d7ec1bb6e124a9d85d771014a2a85cfeb00097bf7c679"
+    },
+    {
+      "path": "fixtures/signatures/notification-template-read.json",
+      "sha256": "565b9a850fcf3a7dbfd47abeae4d0e04f25babb2c52917b3c895d297e6d84c8e"
+    },
+    {
+      "path": "fixtures/signatures/owner-configuration-read-cross-domain.json",
+      "sha256": "c725db15e3a58f3264e4a7b94a84c43c7485c31f902066f5a0daafa01b19111e"
+    },
+    {
+      "path": "fixtures/signatures/owner-configuration-read.json",
+      "sha256": "1b5d246a5941cd3d8901f58ce07d2216acee58467e4a06b61f50721ff9b328f1"
     },
     {
       "path": "fixtures/signatures/owner-recovery-action.json",
@@ -163,6 +199,30 @@
     {
       "path": "fixtures/valid/heartbeat-response.json",
       "sha256": "de52ecbdc9006dabc0bd768a49aa5041148caa6c31bc1b3e169c3259a99abc21"
+    },
+    {
+      "path": "fixtures/valid/notification-template-edit-request.json",
+      "sha256": "fd8fd2a8ea94196aa60e6a77b9866876826839b4dcf98a3154779c53ebf6c13d"
+    },
+    {
+      "path": "fixtures/valid/notification-template-edit-response.json",
+      "sha256": "36739d909ea961b17912c440a146e4968698fa3291682e775374a210fa6fdc0b"
+    },
+    {
+      "path": "fixtures/valid/notification-template-read-request.json",
+      "sha256": "3c6a9d5100f410fe7f0ecd9b36aa83d109463210915e4e5ad535eda460c76a06"
+    },
+    {
+      "path": "fixtures/valid/notification-template-read-response.json",
+      "sha256": "25f9cad8592bdaaec388c2e39921077923ad4c067a25f7ef6012c1e267b0c382"
+    },
+    {
+      "path": "fixtures/valid/owner-configuration-read-request.json",
+      "sha256": "aebb6a7bc4067f24ab7314b37f338a6fe05ccfdb9fccd39684a348d4af1d5e91"
+    },
+    {
+      "path": "fixtures/valid/owner-configuration-read-response.json",
+      "sha256": "9b7bce1c79aa0cbe216d71b76a2d348e452c6fad3cb9e5acce5f249e343d82f8"
     },
     {
       "path": "fixtures/valid/owner-recovery-action-request.json",
@@ -262,7 +322,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "a80f7d1bc2240f14a102397f0450b92c0148262ef86e6ae75aee2c8125f24e40"
+      "sha256": "3f91f479e96e44b62e9934a3aba846c4927fc90d9e8e95ddd346484bb7fdac11"
     },
     {
       "path": "schemas/account-challenge-request.schema.json",
@@ -331,6 +391,30 @@
     {
       "path": "schemas/heartbeat-response.schema.json",
       "sha256": "9b41d0808f550340ded17df86aaf9a46836ee183a82883e310e36ab8b1ed9837"
+    },
+    {
+      "path": "schemas/notification-template-edit-request.schema.json",
+      "sha256": "d02ff3f915df3e2a640b7679b04a1755dda50d3992aaac1803782b562b7c9073"
+    },
+    {
+      "path": "schemas/notification-template-edit-response.schema.json",
+      "sha256": "30407ba72424039f498e818b65714878c67a0eeb5b787e8bcb65a64335a41c30"
+    },
+    {
+      "path": "schemas/notification-template-read-request.schema.json",
+      "sha256": "829f5a8a61c74b9e3b2f8ce6cc6b377b8169be9eb650a0567f4f71bd08f593c4"
+    },
+    {
+      "path": "schemas/notification-template-read-response.schema.json",
+      "sha256": "0b5e53b08a7f7b599a7069ff69a5b21019614c8949047bf05c02d50cd2ea2833"
+    },
+    {
+      "path": "schemas/owner-configuration-read-request.schema.json",
+      "sha256": "f39368ab9d20522b540695829779c8641f9ad34ce1438e186bf4ad48ada0c927"
+    },
+    {
+      "path": "schemas/owner-configuration-read-response.schema.json",
+      "sha256": "53a52d5cbe1f031de99437a029c190e3df6029bd944f4935f1a67b90b557a24b"
     },
     {
       "path": "schemas/owner-recovery-action-request.schema.json",
@@ -433,5 +517,5 @@
       "sha256": "851ac5fad6c2cfb53fa2854186a5472e758ec302b2bb422dba9a59c44ae3a188"
     }
   ],
-  "release_digest": "1e8ebccc13cd84c93f7280d44d2e4a1f4bcdbe79512ca8a0970bea9c2750dde4"
+  "release_digest": "4ebed102b09cfb905ec21ff938133cba874ce411f5f185e54393b24288ab4fb7"
 }

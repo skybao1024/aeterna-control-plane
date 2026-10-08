@@ -32,6 +32,7 @@ public client protocol.
 - [I13 delayed recovery implementation results](./development/i13-delayed-recovery-results.md)
 - [I14 Owner recovery and rotation results](./development/i14-owner-recovery-rotation-results.md)
 - [M05 recovery completion and live acceptance](./development/m05-recovery-completion-results.md)
+- [UX01 Owner configuration and safe message editing](./development/ux01-owner-configuration-results.md)
 
 ## Security
 

@@ -1,0 +1,22 @@
+{
+  "fixture_version": 1,
+  "verification_public_key": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc",
+  "expected": "device.proof_invalid",
+  "envelope": {
+    "protocol_version": 1,
+    "signed": {
+      "canonicalization": "jcs-rfc8785",
+      "domain": "aeterna.owner-configuration.read.v1",
+      "operation": "notification_template.edit",
+      "protocol_version": 1,
+      "signature_version": 1,
+      "request_id": "00000000-0000-4000-8000-000000000072",
+      "account_id": "00000000-0000-4000-8000-000000000020",
+      "authorizing_device_id": "00000000-0000-4000-8000-000000000003",
+      "field": "owner_message",
+      "expected_version": 0,
+      "message": "Synthetic reminder"
+    },
+    "signature": "Ub9bLWiMxSIyiHvADxzOZmi-9DAXzmIT02kjfj07bHb9eEu7_3O3A9Q4MKEqYIdIcnbKalAHjsB_KiETkHoxDQ"
+  }
+}

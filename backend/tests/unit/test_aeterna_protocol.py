@@ -55,7 +55,7 @@ from app.services.common.aeterna_security import (
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "aeterna-protocol-v1"
 EXPECTED_PUBLIC_RELEASE_DIGEST = (
-    "1e8ebccc13cd84c93f7280d44d2e4a1f4bcdbe79512ca8a0970bea9c2750dde4"
+    "4ebed102b09cfb905ec21ff938133cba874ce411f5f185e54393b24288ab4fb7"
 )
 
 
@@ -86,7 +86,7 @@ def make_request(body: bytes, content_type: str = "application/json") -> Request
 
 def test_vendored_public_release_digest_and_every_file_hash_match():
     manifest = load_json("manifest.json")
-    assert manifest["release_tag"] == "protocol-v1.6.0"
+    assert manifest["release_tag"] == "protocol-v1.7.0"
     assert manifest["release_digest"] == EXPECTED_PUBLIC_RELEASE_DIGEST
     for entry in manifest["files"]:
         content = (FIXTURE_ROOT / entry["path"]).read_bytes()
@@ -370,3 +370,35 @@ def test_development_startup_allows_unconfigured_but_rejects_partial_keys(monkey
     monkeypatch.setattr(settings, "AETERNA_PII_KEY_V1", "invalid")
     with pytest.raises(IdentityKeyUnavailable):
         validate_identity_key_configuration()
+
+
+@pytest.mark.parametrize(
+    "name,model",
+    [
+        ("owner-configuration-read", "OwnerConfigurationRequest"),
+        ("notification-template-read", "NotificationTemplateReadRequest"),
+        ("notification-template-edit", "NotificationTemplateEditRequest"),
+    ],
+)
+def test_configuration_public_vectors_closed_schemas_and_cross_domain(name, model):
+    from pydantic import ValidationError
+
+    from app.schemas.client import aeterna_notification
+
+    request_model = getattr(aeterna_notification, model)
+    fixture = load_json(f"fixtures/signatures/{name}.json")
+    document = load_json(f"fixtures/valid/{name}-request.json")
+    request_model.model_validate(document)
+    assert verify_signature(
+        decode_base64url(fixture["public_key"], 32),
+        fixture["document"],
+        fixture["signature"],
+    )
+    cross = load_json(f"fixtures/signatures/{name}-cross-domain.json")["envelope"]
+    assert not verify_signature(
+        decode_base64url(fixture["public_key"], 32), cross["signed"], cross["signature"]
+    )
+    with pytest.raises(ValidationError):
+        request_model.model_validate(
+            load_json(f"fixtures/invalid/{name}-extra-field.json")
+        )

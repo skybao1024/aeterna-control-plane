@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from cryptography.exceptions import InvalidTag
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,13 +36,18 @@ from app.schemas.client.aeterna_notification import (
     ContactActionRequest,
     ContactCreateRequest,
     ContactInvitationResponseRequest,
+    NotificationTemplateEditRequest,
+    NotificationTemplateReadRequest,
     NotificationTemplateRequest,
+    OwnerConfigurationRequest,
 )
 from app.services.client.aeterna_heartbeat import DEVICE_DORMANCY
 from app.services.common.aeterna_security import (
     AeternaIdentityKeys,
     IdentityKeyUnavailable,
     InvalidEmail,
+    decrypt_email,
+    decrypt_private_text,
     derive_invitation_token,
     email_lookup,
     encrypt_email,
@@ -451,6 +457,184 @@ class AeternaNotificationService:
             status=f"v{template.version}",
         )
         data = {"account_id": str(account.id), "version": template.version}
+        self._record_idempotency(
+            db,
+            account.id,
+            signed.operation,
+            signed.request_id,
+            private_request_digest(keys, document),
+            data,
+        )
+        await db.commit()
+        return data
+
+    async def read_owner_configuration(
+        self,
+        db: AsyncSession,
+        payload: OwnerConfigurationRequest,
+        document: dict[str, Any],
+    ) -> dict[str, Any]:
+        signed = payload.signed
+        keys = self._keys(signed.request_id)
+        account, _device, _replay = await self._authorize_owner(db, payload, document)
+        contacts = []
+        try:
+            owner_email = decrypt_email(
+                keys,
+                account.email_ciphertext,
+                account.email_nonce,
+                "account",
+                account.id,
+                account.email_key_version,
+            )
+            for contact_id in signed.contact_ids:
+                contact = await self._locked_contact(
+                    db, account.id, contact_id, signed.request_id, include_deleted=True
+                )
+                email = (
+                    None
+                    if contact.deleted_at is not None
+                    else decrypt_email(
+                        keys,
+                        contact.email_ciphertext,
+                        contact.email_nonce,
+                        "contact",
+                        contact.id,
+                        contact.email_key_version,
+                    )
+                )
+                contacts.append({"contact_id": contact_id, "email": email})
+        except (IdentityKeyUnavailable, InvalidTag, UnicodeError):
+            raise AeternaProtocolException(
+                503, "service.temporarily_unavailable", signed.request_id
+            ) from None
+        data = {
+            "account_id": str(account.id),
+            "owner_email": owner_email,
+            "contacts": contacts,
+        }
+        await db.rollback()
+        return data
+
+    async def read_template(
+        self,
+        db: AsyncSession,
+        payload: NotificationTemplateReadRequest,
+        document: dict[str, Any],
+    ) -> dict[str, Any]:
+        signed = payload.signed
+        keys = self._keys(signed.request_id)
+        account, _device, _replay = await self._authorize_owner(db, payload, document)
+        template = await db.scalar(
+            select(AeternaNotificationTemplate)
+            .where(AeternaNotificationTemplate.account_id == account.id)
+            .with_for_update()
+        )
+        message = ""
+        if template is not None:
+            purpose = (
+                "owner-notification"
+                if signed.field == "owner_message"
+                else "contact-notification"
+            )
+            try:
+                message = decrypt_private_text(
+                    keys,
+                    getattr(template, f"{signed.field}_ciphertext"),
+                    getattr(template, f"{signed.field}_nonce"),
+                    purpose,
+                    account.id,
+                    getattr(template, f"{signed.field}_key_version"),
+                )
+            except (IdentityKeyUnavailable, InvalidTag, UnicodeError):
+                raise AeternaProtocolException(
+                    503, "service.temporarily_unavailable", signed.request_id
+                ) from None
+        data = {
+            "account_id": str(account.id),
+            "field": signed.field,
+            "version": template.version if template is not None else 0,
+            "message": message,
+        }
+        await db.rollback()
+        return data
+
+    async def edit_template(
+        self,
+        db: AsyncSession,
+        payload: NotificationTemplateEditRequest,
+        document: dict[str, Any],
+    ) -> dict[str, Any]:
+        signed = payload.signed
+        keys = self._keys(signed.request_id)
+        account, _device, replay = await self._authorize_owner(
+            db, payload, document, private=True
+        )
+        if replay is not None:
+            return replay
+        template = await db.scalar(
+            select(AeternaNotificationTemplate)
+            .where(AeternaNotificationTemplate.account_id == account.id)
+            .with_for_update()
+        )
+        version = template.version if template is not None else 0
+        if version != signed.expected_version or version >= 2147483647:
+            raise AeternaProtocolException(
+                409, "notification.template_conflict", signed.request_id
+            )
+        if template is None:
+            fields = {}
+            for field, purpose in (
+                ("owner_message", "owner-notification"),
+                ("contact_message", "contact-notification"),
+            ):
+                ciphertext, nonce, key_version = encrypt_private_text(
+                    keys,
+                    signed.message if field == signed.field else "",
+                    purpose,
+                    account.id,
+                    nonce_factory=self.random_bytes,
+                )
+                fields.update(
+                    {
+                        f"{field}_ciphertext": ciphertext,
+                        f"{field}_nonce": nonce,
+                        f"{field}_key_version": key_version,
+                    }
+                )
+            template = AeternaNotificationTemplate(
+                account_id=account.id, version=1, **fields
+            )
+            db.add(template)
+        else:
+            purpose = (
+                "owner-notification"
+                if signed.field == "owner_message"
+                else "contact-notification"
+            )
+            ciphertext, nonce, key_version = encrypt_private_text(
+                keys,
+                signed.message,
+                purpose,
+                account.id,
+                nonce_factory=self.random_bytes,
+            )
+            setattr(template, f"{signed.field}_ciphertext", ciphertext)
+            setattr(template, f"{signed.field}_nonce", nonce)
+            setattr(template, f"{signed.field}_key_version", key_version)
+            template.version += 1
+            template.updated_at = self._now()
+        await db.flush()
+        data = {"account_id": str(account.id), "version": template.version}
+        self._audit(
+            db,
+            account.id,
+            None,
+            None,
+            "owner",
+            "template.updated",
+            status=f"v{template.version}",
+        )
         self._record_idempotency(
             db,
             account.id,

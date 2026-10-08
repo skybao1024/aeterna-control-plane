@@ -7,7 +7,9 @@ from pydantic import ValidationError
 
 from app.schemas.client.aeterna_notification import (
     ContactCreateRequest,
+    NotificationTemplateEditRequest,
     NotificationTemplateRequest,
+    OwnerConfigurationRequest,
 )
 from app.services.common.aeterna_email_adapter import (
     UnavailableProductionEmailAdapter,
@@ -85,3 +87,43 @@ def test_production_email_provider_is_fail_closed(monkeypatch):
         "app.services.common.aeterna_email_adapter.settings.ENV", "production"
     )
     assert isinstance(get_aeterna_email_adapter(), UnavailableProductionEmailAdapter)
+
+
+@pytest.mark.parametrize(
+    "message", ["a" * 4097, "é" * 2049, "forbidden\u0000control", "e\u0301"]
+)
+def test_field_edit_rejects_overflow_control_and_non_nfc(message):
+    document = template_document("", "")
+    signed = document["signed"]
+    signed.pop("owner_message")
+    signed.pop("contact_message")
+    signed.update(
+        domain="aeterna.notification-template.edit.v1",
+        operation="notification_template.edit",
+        field="owner_message",
+        expected_version=0,
+        message=message,
+    )
+    with pytest.raises(ValidationError):
+        NotificationTemplateEditRequest.model_validate(document)
+
+
+@pytest.mark.parametrize(
+    "ids",
+    [
+        ["00000000-0000-4000-8000-000000000001"] * 2,
+        [str(uuid.uuid4()) for _ in range(11)],
+    ],
+)
+def test_identity_read_rejects_duplicate_or_excessive_contact_ids(ids):
+    document = template_document("", "")
+    signed = document["signed"]
+    signed.pop("owner_message")
+    signed.pop("contact_message")
+    signed.update(
+        domain="aeterna.owner-configuration.read.v1",
+        operation="owner_configuration.read",
+        contact_ids=ids,
+    )
+    with pytest.raises(ValidationError):
+        OwnerConfigurationRequest.model_validate(document)

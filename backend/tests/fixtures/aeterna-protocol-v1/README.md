@@ -88,7 +88,7 @@ the RFC 8785 canonical manifest without `release_digest`. The private control
 plane vendors this exact package, pins the release tag and digest, and runs the
 same fixtures.
 
-The prepared release is `1.6.0` with tag name `protocol-v1.6.0`; preparing the
+The prepared release is `1.7.0` with tag name `protocol-v1.7.0`; preparing the
 manifest does not create or publish a Git tag. Signed field changes and security
 semantic changes require a new major/versioned operation as defined by ADR 0012. The prior major remains supported for at least 180 days after a successor
 reaches general availability, with at least 90 days' sunset notice unless a
@@ -101,8 +101,14 @@ material, request/account/device/binding identifiers, public keys, signatures,
 challenges, device state, and the minimum monotonic heartbeat sequence and
 server receipt response. Unknown fields are rejected. There is no activity
 type or observation, client timestamp or deadline, application/window/URL data,
-input value, local encrypted content, contact email, or custom notification
-payload. The only recovery secret field is the purpose-limited 32-byte `srs`
+input value, or local encrypted content. ADR 0020 explicitly permits the
+active-device-only configuration operations to return the Owner mailbox, at most
+ten known account-owned contact addresses, and saved notification messages.
+These operations never discover contacts; deleted contact addresses are null.
+Template reads return one field per response under the 16 KiB bound. Field edits
+use a signed expected version, an account lock and atomic compare-and-set,
+preserve the counterpart, and return structural receipts only. All configuration
+responses require no-store. No personal values enter logs, audits or receipts. The only recovery secret field is the purpose-limited 32-byte `srs`
 in provisioning, Owner release, rotation provision, and released-secret success
 responses; it is absent from
 requests, logs, error bodies, audit fixtures, and all other operations.

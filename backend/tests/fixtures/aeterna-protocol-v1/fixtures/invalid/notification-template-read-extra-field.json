@@ -1,0 +1,16 @@
+{
+  "protocol_version": 1,
+  "signed": {
+    "canonicalization": "jcs-rfc8785",
+    "domain": "aeterna.notification-template.read.v1",
+    "operation": "notification_template.read",
+    "protocol_version": 1,
+    "signature_version": 1,
+    "request_id": "00000000-0000-4000-8000-000000000071",
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "authorizing_device_id": "00000000-0000-4000-8000-000000000003",
+    "field": "owner_message",
+    "arbitrary": true
+  },
+  "signature": "-cqPf1ZnuK5czhoauksWgUGaR_w5UbBDcEPC1hcW1oQ40nt3j-arRRw7TPKugEjkq93QNTX-t0RRFbkSegxBDw"
+}

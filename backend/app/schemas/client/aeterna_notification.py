@@ -160,3 +160,96 @@ class NotificationTemplateResponse(ClosedModel):
     protocol_version: Literal[1]
     request_id: UuidString
     data: NotificationTemplateData
+
+
+TemplateField = Literal["owner_message", "contact_message"]
+
+
+class OwnerConfigurationSigned(SignedHeader):
+    domain: Literal["aeterna.owner-configuration.read.v1"]
+    operation: Literal["owner_configuration.read"]
+    account_id: UuidString
+    authorizing_device_id: UuidString
+    contact_ids: Annotated[list[UuidString], Field(max_length=10)]
+
+    @model_validator(mode="after")
+    def validate_unique_contacts(self) -> "OwnerConfigurationSigned":
+        if len(set(self.contact_ids)) != len(self.contact_ids):
+            raise ValueError("contact IDs must be unique")
+        return self
+
+
+class OwnerConfigurationRequest(ClosedModel):
+    protocol_version: Literal[1]
+    signed: OwnerConfigurationSigned
+    signature: Base64Url64
+
+
+class KnownContactIdentity(ClosedModel):
+    contact_id: UuidString
+    email: Optional[Annotated[str, Field(min_length=3, max_length=254)]]
+
+
+class OwnerConfigurationData(ClosedModel):
+    account_id: UuidString
+    owner_email: Annotated[str, Field(min_length=3, max_length=254)]
+    contacts: Annotated[list[KnownContactIdentity], Field(max_length=10)]
+
+
+class OwnerConfigurationResponse(ClosedModel):
+    protocol_version: Literal[1]
+    request_id: UuidString
+    data: OwnerConfigurationData
+
+
+class NotificationTemplateReadSigned(SignedHeader):
+    domain: Literal["aeterna.notification-template.read.v1"]
+    operation: Literal["notification_template.read"]
+    account_id: UuidString
+    authorizing_device_id: UuidString
+    field: TemplateField
+
+
+class NotificationTemplateReadRequest(ClosedModel):
+    protocol_version: Literal[1]
+    signed: NotificationTemplateReadSigned
+    signature: Base64Url64
+
+
+class NotificationTemplateReadData(ClosedModel):
+    account_id: UuidString
+    field: TemplateField
+    version: Annotated[int, Field(ge=0, le=2147483647)]
+    message: BoundedMessage
+
+    @model_validator(mode="after")
+    def validate_message(self) -> "NotificationTemplateReadData":
+        self.message = _validate_message(self.message)
+        return self
+
+
+class NotificationTemplateReadResponse(ClosedModel):
+    protocol_version: Literal[1]
+    request_id: UuidString
+    data: NotificationTemplateReadData
+
+
+class NotificationTemplateEditSigned(SignedHeader):
+    domain: Literal["aeterna.notification-template.edit.v1"]
+    operation: Literal["notification_template.edit"]
+    account_id: UuidString
+    authorizing_device_id: UuidString
+    field: TemplateField
+    expected_version: Annotated[int, Field(ge=0, le=2147483646)]
+    message: BoundedMessage
+
+    @model_validator(mode="after")
+    def validate_message(self) -> "NotificationTemplateEditSigned":
+        self.message = _validate_message(self.message)
+        return self
+
+
+class NotificationTemplateEditRequest(ClosedModel):
+    protocol_version: Literal[1]
+    signed: NotificationTemplateEditSigned
+    signature: Base64Url64

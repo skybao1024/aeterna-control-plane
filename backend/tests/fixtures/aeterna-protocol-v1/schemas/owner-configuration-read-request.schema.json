@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:owner-configuration-read-request",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "signed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canonicalization": {
+          "const": "jcs-rfc8785",
+          "type": "string"
+        },
+        "domain": {
+          "const": "aeterna.owner-configuration.read.v1",
+          "type": "string"
+        },
+        "operation": {
+          "const": "owner_configuration.read",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "signature_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "request_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "account_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "authorizing_device_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "contact_ids": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.schema.json#/$defs/uuid"
+          }
+        }
+      },
+      "required": [
+        "canonicalization",
+        "domain",
+        "operation",
+        "protocol_version",
+        "signature_version",
+        "request_id",
+        "account_id",
+        "authorizing_device_id",
+        "contact_ids"
+      ]
+    },
+    "signature": {
+      "$ref": "common.schema.json#/$defs/base64url64"
+    }
+  },
+  "required": ["protocol_version", "signed", "signature"]
+}

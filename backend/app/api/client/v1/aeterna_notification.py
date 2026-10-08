@@ -20,8 +20,13 @@ from app.schemas.client.aeterna_notification import (
     ContactInvitationResponseRequest,
     ContactResponse,
     InvitationResponse,
+    NotificationTemplateEditRequest,
+    NotificationTemplateReadRequest,
+    NotificationTemplateReadResponse,
     NotificationTemplateRequest,
     NotificationTemplateResponse,
+    OwnerConfigurationRequest,
+    OwnerConfigurationResponse,
 )
 from app.schemas.client.aeterna_protocol import ProtocolErrorResponse
 from app.services.client.aeterna_notification import (
@@ -209,3 +214,63 @@ async def respond_to_contact_invitation(
         service.respond_to_invitation(db, payload, _client_address(request)),
     )
     return protocol_response(payload.request_id, data)
+
+
+@router.post(
+    "/owner-configuration/read",
+    response_model=OwnerConfigurationResponse,
+    responses=PROTOCOL_ERROR_RESPONSES,
+    openapi_extra=openapi_request(OwnerConfigurationRequest),
+)
+async def read_owner_configuration(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    service: AeternaNotificationService = Depends(get_aeterna_notification_service),
+):
+    payload, document = await parse_protocol_body(request, OwnerConfigurationRequest)
+    data = await _database_call(
+        db,
+        payload.signed.request_id,
+        service.read_owner_configuration(db, payload, document),
+    )
+    return protocol_response(payload.signed.request_id, data)
+
+
+@router.post(
+    "/notifications/template/read",
+    response_model=NotificationTemplateReadResponse,
+    responses=PROTOCOL_ERROR_RESPONSES,
+    openapi_extra=openapi_request(NotificationTemplateReadRequest),
+)
+async def read_notification_template(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    service: AeternaNotificationService = Depends(get_aeterna_notification_service),
+):
+    payload, document = await parse_protocol_body(
+        request, NotificationTemplateReadRequest
+    )
+    data = await _database_call(
+        db, payload.signed.request_id, service.read_template(db, payload, document)
+    )
+    return protocol_response(payload.signed.request_id, data)
+
+
+@router.patch(
+    "/notifications/template",
+    response_model=NotificationTemplateResponse,
+    responses=PROTOCOL_ERROR_RESPONSES,
+    openapi_extra=openapi_request(NotificationTemplateEditRequest),
+)
+async def edit_notification_template(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    service: AeternaNotificationService = Depends(get_aeterna_notification_service),
+):
+    payload, document = await parse_protocol_body(
+        request, NotificationTemplateEditRequest
+    )
+    data = await _database_call(
+        db, payload.signed.request_id, service.edit_template(db, payload, document)
+    )
+    return protocol_response(payload.signed.request_id, data)

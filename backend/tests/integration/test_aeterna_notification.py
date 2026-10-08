@@ -34,7 +34,10 @@ from app.schemas.client.aeterna_notification import (
     ContactActionRequest,
     ContactCreateRequest,
     ContactInvitationResponseRequest,
+    NotificationTemplateEditRequest,
+    NotificationTemplateReadRequest,
     NotificationTemplateRequest,
+    OwnerConfigurationRequest,
 )
 from app.services.client.aeterna_notification import AeternaNotificationService
 from app.services.common.aeterna_email_adapter import (
@@ -47,6 +50,7 @@ from app.services.common.aeterna_security import (
     canonicalize,
     decrypt_email,
     derive_invitation_token,
+    email_lookup,
     encode_base64url,
     encrypt_email,
 )
@@ -158,7 +162,7 @@ async def create_account(now: datetime, owner_email: str = "owner@example.com"):
         db.add(
             AeternaAccount(
                 id=account_id,
-                email_lookup=bytes([0x55]) * 32,
+                email_lookup=email_lookup(keys, owner_email),
                 email_ciphertext=ciphertext,
                 email_nonce=nonce,
                 email_key_version=key_version,
@@ -865,3 +869,208 @@ async def load_email_event(event_id: uuid.UUID) -> AeternaEmailOutboxEvent:
         assert event is not None
         db.expunge(event)
         return event
+
+
+async def configuration_call(service, fixture, operation, members):
+    domain = {
+        "owner_configuration.read": "aeterna.owner-configuration.read.v1",
+        "notification_template.read": "aeterna.notification-template.read.v1",
+        "notification_template.edit": "aeterna.notification-template.edit.v1",
+    }[operation]
+    model, method = {
+        "owner_configuration.read": (
+            OwnerConfigurationRequest,
+            service.read_owner_configuration,
+        ),
+        "notification_template.read": (
+            NotificationTemplateReadRequest,
+            service.read_template,
+        ),
+        "notification_template.edit": (
+            NotificationTemplateEditRequest,
+            service.edit_template,
+        ),
+    }[operation]
+    document = signed_document(
+        fixture, domain=domain, operation=operation, members=members
+    )
+    async with get_session_local()() as db:
+        return await method(db, model.model_validate(document), document)
+
+
+async def test_configuration_reads_known_identities_and_redacts_deleted_contacts():
+    now = datetime.now(UTC)
+    fixture = await create_account(now)
+    other = await create_account(now, "other-owner@example.com")
+    service = AeternaNotificationService(key_provider=synthetic_keys, clock=lambda: now)
+    contact = await create_contact(
+        service, fixture, "synthetic-contact@example.com", "PRIVATE_UNTIL_RELEASE"
+    )
+    contact_id = contact["contact_id"]
+    data = await configuration_call(
+        service, fixture, "owner_configuration.read", {"contact_ids": [contact_id]}
+    )
+    assert data["owner_email"] == "owner@example.com"
+    assert data["contacts"] == [
+        {"contact_id": contact_id, "email": "synthetic-contact@example.com"}
+    ]
+    empty = await configuration_call(
+        service, fixture, "owner_configuration.read", {"contact_ids": []}
+    )
+    assert empty["contacts"] == []
+    with pytest.raises(AeternaProtocolException) as denied:
+        await configuration_call(
+            service, other, "owner_configuration.read", {"contact_ids": [contact_id]}
+        )
+    assert denied.value.code == "contact.not_found"
+    document = action_document(fixture, uuid.UUID(contact_id), "contact.delete")
+    async with get_session_local()() as db:
+        await service.delete_contact(
+            db, ContactActionRequest.model_validate(document), document
+        )
+    redacted = await configuration_call(
+        service, fixture, "owner_configuration.read", {"contact_ids": [contact_id]}
+    )
+    assert redacted["contacts"] == [{"contact_id": contact_id, "email": None}]
+
+
+async def test_template_field_edit_preserves_counterpart_conflict_replay_and_receipt_privacy():
+    now = datetime.now(UTC)
+    fixture = await create_account(now)
+    service = AeternaNotificationService(key_provider=synthetic_keys, clock=lambda: now)
+    empty = await configuration_call(
+        service, fixture, "notification_template.read", {"field": "owner_message"}
+    )
+    assert empty["message"] == "" and empty["version"] == 0
+    first = await configuration_call(
+        service,
+        fixture,
+        "notification_template.edit",
+        {
+            "field": "owner_message",
+            "expected_version": 0,
+            "message": "Synthetic owner text",
+        },
+    )
+    assert first["version"] == 1
+    document = signed_document(
+        fixture,
+        domain="aeterna.notification-template.edit.v1",
+        operation="notification_template.edit",
+        members={
+            "field": "contact_message",
+            "expected_version": 1,
+            "message": "Synthetic contact text",
+        },
+    )
+
+    async def edit(document):
+        async with get_session_local()() as db:
+            return await service.edit_template(
+                db, NotificationTemplateEditRequest.model_validate(document), document
+            )
+
+    result = await edit(document)
+    assert result["version"] == 2 and await edit(document) == result
+    owner = await configuration_call(
+        service, fixture, "notification_template.read", {"field": "owner_message"}
+    )
+    assert owner["message"] == "Synthetic owner text" and owner["version"] == 2
+    with pytest.raises(AeternaProtocolException) as conflict:
+        await configuration_call(
+            service,
+            fixture,
+            "notification_template.edit",
+            {"field": "owner_message", "expected_version": 1, "message": "Stale text"},
+        )
+    assert conflict.value.code == "notification.template_conflict"
+    document["signed"]["message"] = "Changed replay"
+    document["signature"] = encode_base64url(
+        fixture.signing_key.sign(canonicalize(document["signed"]))
+    )
+    with pytest.raises(AeternaProtocolException) as replay:
+        await edit(document)
+    assert replay.value.code == "request.idempotency_conflict"
+    async with get_session_local()() as db:
+        receipts = (
+            await db.scalars(
+                select(AeternaProtocolIdempotency).where(
+                    AeternaProtocolIdempotency.operation == "notification_template.edit"
+                )
+            )
+        ).all()
+        assert all(
+            set(receipt.response_data) == {"account_id", "version"}
+            for receipt in receipts
+        )
+
+
+@pytest.mark.parametrize("status", ["lost", "dormant", "revoked"])
+async def test_configuration_rejects_inactive_devices(status):
+    now = datetime.now(UTC)
+    fixture = await create_account(now)
+    async with get_session_local().begin() as db:
+        device = await db.get(AeternaDevice, fixture.device_id)
+        device.status = status
+    service = AeternaNotificationService(key_provider=synthetic_keys, clock=lambda: now)
+    with pytest.raises(AeternaProtocolException) as denied:
+        await configuration_call(
+            service, fixture, "owner_configuration.read", {"contact_ids": []}
+        )
+    assert denied.value.code == "device.not_active"
+
+
+async def test_template_concurrent_same_version_has_one_winner():
+    now = datetime.now(UTC)
+    fixture = await create_account(now)
+    service = AeternaNotificationService(key_provider=synthetic_keys, clock=lambda: now)
+    results = await asyncio.gather(
+        *[
+            configuration_call(
+                service,
+                fixture,
+                "notification_template.edit",
+                {
+                    "field": field,
+                    "expected_version": 0,
+                    "message": "Concurrent synthetic text",
+                },
+            )
+            for field in ("owner_message", "contact_message")
+        ],
+        return_exceptions=True,
+    )
+    assert sum(isinstance(result, dict) for result in results) == 1
+    failures = [
+        result for result in results if isinstance(result, AeternaProtocolException)
+    ]
+    assert len(failures) == 1 and failures[0].code == "notification.template_conflict"
+
+
+async def test_configuration_rejects_pending_identity_wrong_key_and_stale_activity():
+    now = datetime.now(UTC)
+    fixture = await create_account(now)
+    service = AeternaNotificationService(key_provider=synthetic_keys, clock=lambda: now)
+    for members in ({"authorizing_device_id": str(uuid.uuid4())}, {}):
+        document = signed_document(
+            fixture,
+            domain="aeterna.owner-configuration.read.v1",
+            operation="owner_configuration.read",
+            members={"contact_ids": [], **members},
+        )
+        if not members:
+            document["signature"] = encode_base64url(
+                Ed25519PrivateKey.generate().sign(canonicalize(document["signed"]))
+            )
+        async with get_session_local()() as db:
+            with pytest.raises(AeternaProtocolException) as denied:
+                await service.read_owner_configuration(
+                    db, OwnerConfigurationRequest.model_validate(document), document
+                )
+            assert denied.value.code == "device.proof_invalid"
+    service.clock = lambda: now + timedelta(days=91)
+    with pytest.raises(AeternaProtocolException) as dormant:
+        await configuration_call(
+            service, fixture, "owner_configuration.read", {"contact_ids": []}
+        )
+    assert dormant.value.code == "device.not_active"

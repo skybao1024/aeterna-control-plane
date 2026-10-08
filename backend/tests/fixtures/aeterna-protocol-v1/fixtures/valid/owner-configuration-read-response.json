@@ -1,0 +1,9 @@
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000070",
+  "data": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "owner_email": "owner@example.com",
+    "contacts": []
+  }
+}

@@ -43,6 +43,8 @@
     { "code": "recovery.rotation_incomplete", "http_status": 409 },
     { "code": "recovery.generation_mismatch", "http_status": 409 },
     { "code": "recovery.rekey_required", "http_status": 409 },
-    { "code": "service.temporarily_unavailable", "http_status": 503 }
+    { "code": "service.temporarily_unavailable", "http_status": 503 },
+    { "code": "notification.template_conflict", "http_status": 409 },
+    { "code": "contact.not_found", "http_status": 404 }
   ]
 }
