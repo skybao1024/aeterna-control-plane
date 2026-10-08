@@ -58,7 +58,7 @@ if [[ ! -e /etc/aeterna/runtime.env ]]; then
         {
             printf '%s\n' 'COMPOSE_PROJECT_NAME=aeterna-control-plane' 'ENV=production' \
                 'PROJECT_NAME=Aeterna Control Plane' 'BIND_ADDRESS=127.0.0.1' \
-                'API_PORT=8001' 'FRONTEND_PORT=8080' 'FRONTEND_URL=https://console.aeternarelay.com' \
+                'API_PORT=8001' 'FRONTEND_PORT=8080' 'FRONTEND_URL=https://claim.aeternarelay.com' \
                 'VITE_API_BASE_URL=/api' 'POSTGRES_USER=app' 'POSTGRES_DB=app' \
                 'POSTGRES_HOST=postgres' 'POSTGRES_PORT=5432' 'POSTGRES_SSL_REQUIRE=false' \
                 'REDIS_HOST=redis' 'REDIS_PORT=6379' 'CELERY_LOG_LEVEL=info'
@@ -79,20 +79,5 @@ fi
 [[ -f /etc/aeterna/runtime.env && ! -L /etc/aeterna/runtime.env ]]
 chmod 600 /etc/aeterna/runtime.env
 
-if [[ ! -e /etc/nginx/sites-available/aeterna-control-plane ]]; then
-    install -d -o root -g root -m 755 /var/www/aeterna-control-acme
-    install -o root -g root -m 644 "$directory/nginx-http.conf" /etc/nginx/sites-available/aeterna-control-plane
-    ln -s /etc/nginx/sites-available/aeterna-control-plane /etc/nginx/sites-enabled/aeterna-control-plane
-    nginx -t >> "$bootstrap_log" 2>&1
-    systemctl reload nginx
-fi
-if [[ ! -d /etc/letsencrypt/live/aeterna-control-plane ]]; then
-    certbot certonly --webroot -w /var/www/aeterna-control-acme \
-        --cert-name aeterna-control-plane -d api.aeternarelay.com -d console.aeternarelay.com \
-        --non-interactive --agree-tos --register-unsafely-without-email >> "$bootstrap_log" 2>&1
-fi
-install -o root -g root -m 644 "$directory/nginx.conf" /etc/nginx/sites-available/aeterna-control-plane
-nginx -t >> "$bootstrap_log" 2>&1
-systemctl reload nginx
-systemctl enable --now certbot.timer >> "$bootstrap_log" 2>&1
+bash "$directory/configure-ingress.sh"
 printf 'Production server, private configuration, release wrapper, and HTTPS ingress prepared.\n'

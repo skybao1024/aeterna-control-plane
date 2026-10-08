@@ -6,12 +6,13 @@ import RouteGuard from './RouteGuard';
 import { PATHS } from './paths';
 
 // Lazy load components
-const Layout = lazy(() => import('../components/Layout'));
+const Layout = lazy(() => import('@/components/Layout'));
 const NotFound: FC = () => <div>404 - Not Found</div>;
-const Home = lazy(() => import('../pages/Home'));
-const Login = lazy(() => import('../pages/Login'));
-const ContactInvitation = lazy(() => import('../pages/ContactInvitation'));
-const RecoveryClaim = lazy(() => import('../pages/RecoveryClaim'));
+const Home = lazy(() => import('@/pages/Home'));
+const Login = lazy(() => import('@/pages/Login'));
+const ContactPortal = lazy(() => import('@/pages/ContactPortal'));
+const ContactInvitation = lazy(() => import('@/pages/ContactInvitation'));
+const RecoveryClaim = lazy(() => import('@/pages/RecoveryClaim'));
 
 // Loading spinner component
 const LoadingSpinner: FC = () => <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>;
@@ -25,7 +26,7 @@ function withSuspense(Component: ComponentType) {
   );
 }
 
-const routes: RouteObject[] = [
+const adminRoutes: RouteObject[] = [
   {
     path: '/',
     element: <RouteGuard>{withSuspense(Layout)}</RouteGuard>,
@@ -41,6 +42,9 @@ const routes: RouteObject[] = [
     path: PATHS.login,
     element: withSuspense(Login),
   },
+];
+
+const recipientRoutes: RouteObject[] = [
   {
     path: '/recovery-claim',
     element: withSuspense(RecoveryClaim),
@@ -49,10 +53,17 @@ const routes: RouteObject[] = [
     path: '/contact-invitation',
     element: withSuspense(ContactInvitation),
   },
-  {
-    path: '*',
-    element: <NotFound />,
-  },
+];
+
+export const isContactPortal = window.location.hostname === 'claim.aeternarelay.com';
+
+const routes: RouteObject[] = [
+  ...(isContactPortal
+    ? [{ path: '/', element: withSuspense(ContactPortal) }, ...recipientRoutes]
+    : import.meta.env.DEV
+      ? [...adminRoutes, { path: '/recipient', element: withSuspense(ContactPortal) }, ...recipientRoutes]
+      : adminRoutes),
+  { path: '*', element: <NotFound /> },
 ];
 
 export default routes;

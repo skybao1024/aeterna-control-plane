@@ -93,7 +93,7 @@ jobs:
             exec -T frontend pnpm lint
       - name: Verify release orchestration
         run: |
-          bash -n deploy.sh deployment/ssh-release.sh
+          bash -n deploy.sh deployment/ssh-release.sh deployment/bootstrap.sh deployment/configure-ingress.sh
           bash tests/deployment/test_release.sh
       - name: Package tested production images
         if: github.event_name != 'pull_request'
@@ -175,3 +175,5 @@ jobs:
             https://api.aeternarelay.com/api/v1/config/health > /dev/null
           curl --fail --silent --show-error --max-time 30 \
             https://console.aeternarelay.com/health > /dev/null
+          curl --fail --silent --show-error --max-time 30 \
+            https://claim.aeternarelay.com/health > /dev/null

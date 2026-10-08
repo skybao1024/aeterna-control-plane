@@ -2,6 +2,7 @@ services:
   backend:
     environment:
       ENV: production
+      FRONTEND_URL: ${AETERNA_PUBLIC_FRONTEND_URL:-https://claim.aeternarelay.com}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       REDIS_HOST: redis
@@ -12,6 +13,7 @@ services:
   celery-worker:
     environment:
       ENV: production
+      FRONTEND_URL: ${AETERNA_PUBLIC_FRONTEND_URL:-https://claim.aeternarelay.com}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       REDIS_HOST: redis
@@ -20,6 +22,7 @@ services:
   celery-beat:
     environment:
       ENV: production
+      FRONTEND_URL: ${AETERNA_PUBLIC_FRONTEND_URL:-https://claim.aeternarelay.com}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       REDIS_HOST: redis

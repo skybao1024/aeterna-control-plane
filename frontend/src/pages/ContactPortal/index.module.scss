@@ -1,0 +1,115 @@
+.page {
+  min-height: 100vh;
+  padding: 28px 24px 48px;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.7;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-default);
+
+  a {
+    color: var(--text-secondary);
+    text-underline-offset: 4px;
+  }
+}
+
+.brand {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.content {
+  max-width: 800px;
+  margin: 64px auto 0;
+
+  h1 {
+    margin: 12px 0 20px;
+    font-size: clamp(32px, 5vw, 48px);
+    line-height: 1.2;
+    letter-spacing: -0.03em;
+  }
+
+  h2 {
+    margin: 0 0 12px;
+    font-size: 20px;
+    line-height: 1.4;
+  }
+
+  p {
+    margin-top: 0;
+  }
+}
+
+.label {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.introduction {
+  max-width: 680px;
+  color: var(--text-secondary);
+  font-size: 18px;
+}
+
+.instructions {
+  margin: 32px 0 24px;
+  padding: 28px;
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  background-color: var(--card-bg);
+
+  p {
+    margin-bottom: 0;
+  }
+}
+
+.flows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+  margin: 32px 0;
+
+  p {
+    margin-bottom: 0;
+    color: var(--text-secondary);
+  }
+}
+
+.note,
+.footer {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.footer {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-default);
+}
+
+@media (max-width: 600px) {
+  .content {
+    margin-top: 40px;
+  }
+
+  .flows {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .instructions {
+    padding: 24px;
+  }
+}

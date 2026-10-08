@@ -93,8 +93,19 @@ to `dev`; pull requests never receive deployment credentials.
 The public ingress is:
 
 - API: <https://api.aeternarelay.com>
-- Backoffice UI: <https://console.aeternarelay.com>
+- Operations console (administrator sign-in): <https://console.aeternarelay.com>
+- Trusted contact portal (public invitations and recovery claims):
+  <https://claim.aeternarelay.com>
 - The root domain remains the product website.
+
+The contact portal homepage explains how to open a personal email link; it
+does not require an administrator account. Its routes exclude the operations
+console, and its ingress permits only the public invitation/claim API paths.
+Previous console invitation and claim URLs redirect to the contact portal,
+preserving browser-held token fragments. Production email links use
+`AETERNA_PUBLIC_FRONTEND_URL` (default `https://claim.aeternarelay.com`) through
+the production Compose override for the API and both Celery services. Local
+development retains both flows, with the portal homepage at `/recipient`.
 
 GitHub builds Linux amd64 images and runs backend tests with PostgreSQL and
 Redis, frontend type/lint checks, and release safety checks. A short-lived
@@ -114,7 +125,8 @@ The `production` GitHub environment requires:
 An operator installs Docker Engine and Compose on the Debian host, uploads
 `deployment/` plus the CI public key privately, then runs
 `deployment/bootstrap.sh <ci-public-key-file> <kms-region> <kms-key-arn>` as
-root. The bootstrap preserves existing secrets and unrelated websites. It
+root after the API, console, and claim DNS records point to the host. The
+bootstrap preserves existing secrets and unrelated websites. It
 creates host ingress, a separate certificate, and fresh random
 database/Redis/JWT secrets without displaying them. The restricted CI account
 is created only when CI SSH access is explicitly enabled. Runtime
@@ -128,6 +140,14 @@ bootstrap prepares the host for an operator's first SSH activation without
 adding CI access. Until the environment secrets are authorized and installed,
 CI builds and tests releases; the operator can download a successful release
 artifact and activate it once over their existing SSH connection.
+
+For an existing host, upload the updated `deployment/` directory and run
+`bash deployment/configure-ingress.sh` as root to update only ingress and
+expand the project certificate. Existing API/console HTTPS stays active while
+the new claim domain completes ACME validation. The helper validates Nginx
+before reloading and restores the previous ingress on failure. It does not
+modify runtime secrets or CI SSH access. Ingress is maintained by the operator;
+manual CD publishes the tested images and Compose configuration.
 
 Every release pauses application traffic and scheduled work, backs up
 PostgreSQL, preserves a copy of the encrypted identity envelope, applies

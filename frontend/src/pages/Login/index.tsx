@@ -46,7 +46,7 @@ const Login: FC = () => {
       <Card className={styles.card}>
         <div className={styles.header}>
           <Title level={2} className={styles.title}>
-            Sign In
+            Operations console
           </Title>
           <Text className={styles.subtitle}>Sign in to the Aeterna operations console.</Text>
         </div>
