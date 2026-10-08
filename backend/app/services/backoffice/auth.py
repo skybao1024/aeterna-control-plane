@@ -13,6 +13,19 @@ from app.models.token import AdminToken
 
 
 class BackofficeAuthService(AuthBase):
+    def _get_admin_id(self, payload: dict) -> int | None:
+        """Convert the JWT string subject to a valid PostgreSQL integer ID."""
+        subject = payload.get("sub")
+        if (
+            not isinstance(subject, str)
+            or not 1 <= len(subject) <= 10
+            or not subject.isascii()
+            or not subject.isdecimal()
+        ):
+            return None
+        admin_id = int(subject)
+        return admin_id if 0 < admin_id <= 2**31 - 1 else None
+
     async def authenticate_admin(
         self, db: AsyncSession, email: str, password: str
     ) -> Optional[Admin]:
@@ -77,7 +90,9 @@ class BackofficeAuthService(AuthBase):
         if not payload:
             raise APIException(status_code=401, message="Invalid refresh token")
 
-        admin_id = payload.get("sub")
+        admin_id = self._get_admin_id(payload)
+        if admin_id is None:
+            raise APIException(status_code=401, message="Invalid refresh token")
         token_query = select(AdminToken).where(
             (AdminToken.admin_id == admin_id) & (AdminToken.is_active == True)
         )
@@ -109,7 +124,9 @@ class BackofficeAuthService(AuthBase):
         if not payload:
             return  # Ignore invalid token
 
-        admin_id = payload.get("sub")
+        admin_id = self._get_admin_id(payload)
+        if admin_id is None:
+            return
         token_query = select(AdminToken).where(
             (AdminToken.admin_id == admin_id) & (AdminToken.is_active == True)
         )
