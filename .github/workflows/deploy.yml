@@ -75,6 +75,10 @@ jobs:
           docker tag "$BACKEND_IMAGE:$RELEASE_SHA" "$BACKEND_IMAGE:dev"
       - name: Start development services from built images
         run: AETERNA_SKIP_BUILD=1 ./deploy.sh dev
+      - name: Verify identity initializer command handling
+        run: |
+          IMAGE_TAG=dev docker compose --env-file "$ENV_FILE" -f docker-compose.yml \
+            --profile identity-setup run --rm --no-deps identity-setup --help
       - name: Verify backend against PostgreSQL and Redis
         run: |
           docker compose --env-file "$ENV_FILE" -f docker-compose.yml -f docker-compose.dev.yml \

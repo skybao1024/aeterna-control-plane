@@ -140,7 +140,8 @@ services:
     build: *backend-build
     profiles:
       - identity-setup
-    command: ["python", "-m", "scripts.initialize_identity_kms"]
+    entrypoint: ["python", "-m", "scripts.initialize_identity_kms"]
+    command: []
     env_file:
       - ${ENV_FILE:-.env}
     environment:
