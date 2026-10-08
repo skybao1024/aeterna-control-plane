@@ -170,6 +170,16 @@ Production email and delayed-recovery delivery remain disabled until their
 separate SES and recovery-key setup is approved. Infrastructure health does
 not establish readiness of those external delivery flows.
 
+A cost-controlled shared-key trial can reuse the existing identity KMS key for
+recovery by explicitly enabling `AETERNA_KMS_ALLOW_SHARED_KEY` and assigning
+the same recovery key ARN. The managed host keeps these public controls in
+`/etc/aeterna/deployment.conf`; the updated release wrapper passes them to
+production services. Identity and recovery IAM policies must still restrict
+their respective encryption contexts. See the
+[identity](backend/docs/deployment/aws-kms-identity.md) and
+[recovery](backend/docs/deployment/aws-kms-recovery.md) guides for the controls,
+policies, and future migration implications.
+
 ## Architecture and boundaries
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for service boundaries and the intended

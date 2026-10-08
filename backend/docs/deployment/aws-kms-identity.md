@@ -11,7 +11,8 @@ Create a customer-managed **symmetric**, **Encrypt and decrypt**, **KMS origin**
 **Single-Region** key. The suggested alias is
 `alias/aeterna-prod-identity-v1`; runtime always pins its full immutable key ARN.
 Use `ap-southeast-1` unless a different identity Region has been deliberately
-selected. Identity must not reuse the recovery SRS key.
+selected. Separate identity and recovery keys are the default; an explicitly
+selected shared-key trial is supported as described below.
 
 Keep the KMS key policy's default account/IAM delegation statement. Create two
 dedicated IAM identities and attach the corresponding policies below, replacing
@@ -138,6 +139,43 @@ The three plaintext identity fields must be empty in production and preview.
 Keep recovery KMS and email enablement controls at their current disabled values
 until those independent launch requirements have been completed. Preserve the
 same `COMPOSE_PROJECT_NAME`; it selects the durable identity volume.
+
+### Shared-key trial
+
+To reuse the existing identity KMS key without creating another billed key, set:
+
+```text
+AETERNA_KMS_ALLOW_SHARED_KEY=true
+AETERNA_RECOVERY_KMS_KEY_ARN=<EXISTING_IDENTITY_KEY_ARN>
+```
+
+Both ARNs must name the same immutable single-Region key in `ap-southeast-1`.
+This opt-in changes configuration validation only. It does not regenerate the
+three identity data keys, rewrite their envelope, or enable recovery or email.
+Never run initialization again against an existing database.
+
+The identity runtime/provisioning policies above remain scoped to their three
+identity purposes. Recovery permissions must use `recovery-srs` and the distinct
+record-binding context described in [the recovery guide](./aws-kms-recovery.md).
+Do not broaden application permissions to unrestricted `kms:Decrypt` or `kms:*`.
+The existing key policy may delegate to the separately scoped IAM policies;
+shared use does not require granting every principal access to both purposes.
+
+For the managed CI/CD host, these public controls can be set in the root-owned
+`/etc/aeterna/deployment.conf`; the release wrapper exports them into the
+production Compose services. Install the updated `deployment/ssh-release.sh`
+before the first shared-key release. Runtime credentials stay in their external
+profiles. For an operator-run Compose deployment, supply the same controls
+through the process environment or private runtime configuration.
+
+For an operator-run check that explicitly supplies the same recovery ARN, add
+`--recovery-key-arn '<EXISTING_IDENTITY_KEY_ARN>' --allow-shared-key --check` to
+the initializer command. A check only decrypts the existing envelope. Without
+`--check`, the CLI continues to refuse an existing output before calling AWS.
+
+One shared key has one key-level disable/delete boundary for both identity and
+recovery data. A future move to separate keys requires reviewing existing
+ciphertext and rewrap requirements; changing an ARN alone is not a migration.
 
 ## Initialize exactly once
 

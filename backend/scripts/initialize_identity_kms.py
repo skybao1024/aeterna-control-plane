@@ -4,7 +4,8 @@ Working directory: ``/app`` inside the backend container.
 Execution: ``python -m scripts.initialize_identity_kms`` in that container.
 Arguments: ``--region``, ``--key-arn``, and ``--environment`` are required;
 ``--output`` defaults to ``/app/identity-keys/envelope.json``. Supply
-``--recovery-key-arn`` to enforce separation from the recovery KMS key.
+``--recovery-key-arn`` to validate separation from the recovery KMS key, or
+add ``--allow-shared-key`` for an explicitly selected shared-key trial.
 ``--check`` decrypts the existing envelope without printing any key material.
 
 Initialize once before identity records are written, then preserve and back up
@@ -47,7 +48,7 @@ class IdentityKeyArgumentParser(argparse.ArgumentParser):
         raise IdentityKeyInitializationError() from None
 
 
-def _default_provider_factory(**configuration: str) -> IdentityKeyProvider:
+def _default_provider_factory(**configuration: str | bool) -> IdentityKeyProvider:
     # Import only after initialization has confirmed that output is absent.
     from app.services.common.aeterna_identity_key import AwsKmsIdentityKeyProvider
 
@@ -108,7 +109,7 @@ def _create_envelope_exclusively(directory: int, filename: str, envelope: dict) 
 def initialize_envelope(
     *,
     output: Path,
-    configuration: dict[str, str],
+    configuration: dict[str, str | bool],
     provider_factory: Callable[..., IdentityKeyProvider],
 ) -> None:
     """Generate ciphertext only after the destination passes local checks."""
@@ -127,6 +128,7 @@ def _argument_parser() -> IdentityKeyArgumentParser:
         "--environment", required=True, choices=("production", "preview")
     )
     parser.add_argument("--recovery-key-arn", default="")
+    parser.add_argument("--allow-shared-key", action="store_true")
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
     parser.add_argument("--check", action="store_true")
     return parser
@@ -149,6 +151,7 @@ def main(
         "key_arn": arguments.key_arn,
         "environment": arguments.environment,
         "recovery_key_arn": arguments.recovery_key_arn,
+        "allow_shared_key": arguments.allow_shared_key,
     }
     factory = provider_factory or _default_provider_factory
     try:

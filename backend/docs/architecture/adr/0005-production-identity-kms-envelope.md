@@ -15,11 +15,15 @@ identity customer-managed single-Region symmetric key in Singapore.
 
 ## Decision
 
-1. One identity-only customer-managed KMS key wraps the three application keys.
+1. One customer-managed KMS key wraps the three independent application keys.
    Its immutable commercial-AWS single-Region UUID key ARN must match the
-   configured Region and must differ from the recovery SRS key ARN. Singapore
-   is the deployment default. No aliases, Multi-Region keys, plaintext fallback,
-   or custom KMS endpoints are accepted.
+   configured Region. Separate identity and recovery keys remain the default.
+   On 2026-10-08 the Owner requested a cost-controlled trial using the existing
+   key for both purposes. `AETERNA_KMS_ALLOW_SHARED_KEY=true` explicitly permits
+   the same recovery ARN; without that opt-in, reuse fails closed. Shared use
+   retains the distinct application keys and exact purpose-specific contexts.
+   Singapore is the deployment default. No aliases, Multi-Region keys, plaintext
+   fallback, or custom KMS endpoints are accepted.
 2. The setup role uses only `kms:GenerateDataKeyWithoutPlaintext`, with
    `KeySpec=AES_256`. Each ciphertext binds exactly its identity purpose,
    environment, context version, and key version. It never receives plaintext
@@ -70,3 +74,9 @@ identity customer-managed single-Region symmetric key in Singapore.
 - Recovery SRS role separation, production email acceptance, TLS, monitoring,
   and other launch requirements remain independent. This implementation does
   not enable them or create IAM/KMS resources.
+- Shared-key trials require purpose-scoped IAM policies for identity and
+  recovery operations. A shared key couples key-level administration, disablement,
+  and deletion across both data categories. Independent application data keys
+  and ciphertext formats are preserved; opt-in does not regenerate the existing
+  identity envelope. Moving existing recovery ciphertext to a separate key later
+  requires a reviewed rewrap/migration rather than changing its configured ARN.

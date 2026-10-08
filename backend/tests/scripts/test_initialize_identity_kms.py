@@ -23,6 +23,7 @@ CONFIGURATION = {
     "key_arn": KEY_ARN,
     "environment": "production",
     "recovery_key_arn": RECOVERY_KEY_ARN,
+    "allow_shared_key": False,
 }
 SYNTHETIC_ENVELOPE = {"ciphertext": "synthetic-ciphertext-only"}
 SENSITIVE_DIAGNOSTIC = "synthetic-provider-diagnostic-must-not-be-printed"
@@ -79,6 +80,30 @@ def test_initialization_persists_only_provider_ciphertext_with_private_permissio
     captured = capsys.readouterr()
     assert captured.out == "Identity KMS envelope initialized.\n"
     assert captured.err == ""
+
+
+def test_shared_key_check_forwards_opt_in_without_reinitializing(tmp_path, capsys):
+    output = tmp_path / "envelope.json"
+    output.write_text("existing persistent envelope")
+    provider = FakeProvider()
+    configurations = []
+
+    def factory(**configuration):
+        configurations.append(configuration)
+        return provider
+
+    argv = arguments(output)
+    argv[argv.index("--recovery-key-arn") + 1] = KEY_ARN
+    argv.extend(["--check", "--allow-shared-key"])
+
+    assert initializer.main(argv, provider_factory=factory) == 0
+    assert configurations == [
+        {**CONFIGURATION, "recovery_key_arn": KEY_ARN, "allow_shared_key": True}
+    ]
+    assert provider.generate_calls == 0
+    assert provider.load_calls == [output]
+    assert output.read_text() == "existing persistent envelope"
+    assert capsys.readouterr().out == "Identity KMS check succeeded.\n"
 
 
 @pytest.mark.parametrize("existing_type", ["file", "directory", "symlink", "broken"])

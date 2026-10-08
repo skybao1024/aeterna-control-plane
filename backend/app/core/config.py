@@ -99,6 +99,7 @@ class Settings(BaseSettings):
 
     # Identity uses stable KMS-wrapped application keys in production/preview.
     # AWS credentials come from the SDK credential-provider chain, never here.
+    AETERNA_KMS_ALLOW_SHARED_KEY: bool = False
     AETERNA_IDENTITY_KEY_PROVIDER: str = "environment"
     AETERNA_IDENTITY_KMS_ENABLED: bool = False
     AETERNA_IDENTITY_KMS_REGION: str = "ap-southeast-1"

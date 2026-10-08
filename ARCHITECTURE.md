@@ -59,12 +59,20 @@ Operator browser -> Backoffice UI -> Backoffice API
   backed by KMS/HSM. Application database credentials must not be able to
   decrypt them by themselves.
 
-Production identity uses a separate customer-managed AWS KMS key to wrap three
+Production identity uses a customer-managed AWS KMS key to wrap three
 stable, independently generated application keys for PII encryption, lookup,
 and OTP/token derivation. A one-time setup container persists their ciphertext
 envelope in the `identity-keys` volume. Runtime containers mount it read-only
 and use decrypt-only AWS permissions. No plaintext production environment-key
 fallback is allowed. See backend ADR 0005 and the identity deployment guide.
+
+Separate identity/recovery KMS keys remain the default. The Owner-selected
+cost-controlled trial enables `AETERNA_KMS_ALLOW_SHARED_KEY` and pins both
+purposes to the existing key ARN. Purpose-specific encryption contexts and IAM
+permissions remain distinct, as do all application data keys. Key-level
+disablement/deletion affects both categories in shared mode. Shared-key selection
+does not enable delayed recovery or email, regenerate the identity envelope,
+or replace the backend's release and mailbox authorization checks.
 
 Production deployment uses GitHub-hosted CI to build and test immutable amd64
 images. A dedicated environment-scoped SSH identity transfers an image/config

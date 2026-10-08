@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from app.core.config import settings
 from app.services.common.aeterna_identity_key import (
     IDENTITY_KEY_ERROR,
     IDENTITY_PURPOSES,
@@ -12,6 +13,7 @@ from app.services.common.aeterna_identity_key import (
     MAX_IDENTITY_ENVELOPE_BYTES,
     AwsKmsIdentityKeyProvider,
     IdentityKeyProviderUnavailable,
+    get_identity_key_provider,
     identity_encryption_context,
 )
 
@@ -271,6 +273,68 @@ def test_missing_oversized_and_nonregular_files_fail_closed(tmp_path):
 def test_provider_rejects_region_key_alias_environment_or_recovery_reuse(changes):
     with pytest.raises(IdentityKeyProviderUnavailable):
         make_provider(**changes)
+
+
+@pytest.mark.parametrize("environment", ["production", "preview"])
+def test_shared_key_opt_in_reads_existing_envelope_without_regenerating_keys(
+    tmp_path, environment
+):
+    client = FakeKmsClient()
+    envelope = make_provider(client, environment=environment).generate_envelope()
+    path = write_envelope(tmp_path, envelope)
+    original = path.read_bytes()
+
+    shared = make_provider(
+        client,
+        environment=environment,
+        recovery_key_arn=KEY_ARN,
+        allow_shared_key=True,
+    )
+    keys = shared.load_keys(path)
+
+    assert keys.pii_key == client.plaintexts["pii"]
+    assert keys.lookup_key == client.plaintexts["lookup"]
+    assert keys.otp_key == client.plaintexts["otp"]
+    assert path.read_bytes() == original
+    assert len(client.generate_calls) == 3
+    assert {
+        call["EncryptionContext"]["aeterna-purpose"] for call in client.decrypt_calls
+    } == {"identity-pii", "identity-lookup", "identity-otp"}
+
+
+@pytest.mark.parametrize("allow_shared_key", [None, "true", "false", 0, 1])
+def test_shared_key_opt_in_requires_a_boolean(allow_shared_key):
+    with pytest.raises(IdentityKeyProviderUnavailable):
+        make_provider(recovery_key_arn=KEY_ARN, allow_shared_key=allow_shared_key)
+
+
+def test_shared_key_still_rejects_recovery_context_in_identity_envelope(tmp_path):
+    client = FakeKmsClient()
+    provider = make_provider(client, recovery_key_arn=KEY_ARN, allow_shared_key=True)
+    envelope = provider.generate_envelope()
+    envelope["keys"]["pii"]["encryption_context"]["aeterna-purpose"] = "recovery-srs"
+
+    with pytest.raises(IdentityKeyProviderUnavailable):
+        provider.load_keys(write_envelope(tmp_path, envelope))
+    assert client.decrypt_calls == []
+
+
+def test_runtime_provider_requires_explicit_shared_key_setting(monkeypatch):
+    client = FakeKmsClient()
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "AETERNA_IDENTITY_KMS_REGION", "ap-southeast-1")
+    monkeypatch.setattr(settings, "AETERNA_IDENTITY_KMS_KEY_ARN", KEY_ARN)
+    monkeypatch.setattr(settings, "AETERNA_RECOVERY_KMS_KEY_ARN", KEY_ARN)
+    monkeypatch.setattr(settings, "AETERNA_KMS_ALLOW_SHARED_KEY", False)
+    monkeypatch.setattr(
+        "app.services.common.aeterna_identity_key.boto3.client",
+        lambda *args, **kwargs: client,
+    )
+    with pytest.raises(IdentityKeyProviderUnavailable):
+        get_identity_key_provider()
+
+    monkeypatch.setattr(settings, "AETERNA_KMS_ALLOW_SHARED_KEY", True)
+    assert get_identity_key_provider().client is client
 
 
 def test_preview_uses_its_own_context_and_rejects_a_production_envelope(tmp_path):

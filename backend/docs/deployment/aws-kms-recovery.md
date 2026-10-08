@@ -46,6 +46,55 @@ the four required encryption-context entries: purpose, environment, context
 version, and opaque binding digest. Rewrap and key administration are separate
 operational roles and are not application permissions.
 
+For the Owner-selected shared-key trial, set `AETERNA_KMS_ALLOW_SHARED_KEY=true`
+and set `AETERNA_RECOVERY_KMS_KEY_ARN` to the existing identity key ARN. This
+reuses the KMS wrapping key while preserving separate data keys and encryption
+contexts. Production recovery remains disabled until its own permission and
+delivery acceptance checks pass.
+
+For a claim-only IAM identity, use this policy with the exact shared or dedicated
+key ARN in `<RECOVERY_KEY_ARN>`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "DecryptReleasedRecoveryFactors",
+    "Effect": "Allow",
+    "Action": "kms:Decrypt",
+    "Resource": "<RECOVERY_KEY_ARN>",
+    "Condition": {
+      "StringEquals": {
+        "kms:EncryptionContext:aeterna-purpose": "recovery-srs",
+        "kms:EncryptionContext:aeterna-environment": "production",
+        "kms:EncryptionContext:aeterna-context-version": "1"
+      },
+      "StringLike": {
+        "kms:EncryptionContext:aeterna-binding": "???????????????????????????????????????????"
+      },
+      "ForAllValues:StringEquals": {
+        "kms:EncryptionContextKeys": [
+          "aeterna-purpose", "aeterna-environment",
+          "aeterna-context-version", "aeterna-binding"
+        ]
+      }
+    }
+  }]
+}
+```
+
+The binding pattern requires a 43-character value. The application reconstructs
+the exact digest from the account/device/vault/recovery record before decrypting;
+the IAM pattern alone does not validate that business binding or release state.
+For the provision-only identity, use the same resource/context conditions,
+change `Sid` to `GenerateRecoveryFactors`, change `Action` to
+`kms:GenerateDataKey`, and add `"kms:KeySpec": "AES_256"` under
+`StringEquals`. Do not add that KeySpec condition to the decrypt policy.
+Keep identity policies scoped to their three `identity-*` purposes, and keep
+recovery policies scoped to `recovery-srs`, even when their resource ARN matches.
+The key policy must permit the selected IAM principals or account delegation;
+these identity-based policies do not override an explicit key-policy denial.
+
 The repository exposes distinct provider dependencies for provision and claim
 work. I15 must choose and verify a deployment topology that actually gives
 those workloads separate IAM roles before enabling production; a single local

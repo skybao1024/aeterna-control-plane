@@ -65,6 +65,7 @@ export AETERNA_BACKUP_DIRECTORY="$root/backups"
 export AWS_CONFIG_DIRECTORY=/etc/aeterna/aws-runtime
 export AETERNA_AWS_PROFILE=aeterna-runtime
 export AETERNA_IDENTITY_KMS_REGION AETERNA_IDENTITY_KMS_KEY_ARN
+export AETERNA_KMS_ALLOW_SHARED_KEY AETERNA_RECOVERY_KMS_KEY_ARN
 
 phase=service-release
 "$release/deploy.sh" release "$revision" >> "$private_log" 2>&1

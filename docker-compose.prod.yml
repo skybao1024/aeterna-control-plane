@@ -1,6 +1,11 @@
+x-kms-environment: &kms-environment
+  AETERNA_KMS_ALLOW_SHARED_KEY: ${AETERNA_KMS_ALLOW_SHARED_KEY:-false}
+  AETERNA_RECOVERY_KMS_KEY_ARN: ${AETERNA_RECOVERY_KMS_KEY_ARN:-}
+
 services:
   backend:
     environment:
+      <<: *kms-environment
       ENV: production
       FRONTEND_URL: ${AETERNA_PUBLIC_FRONTEND_URL:-https://claim.aeternarelay.com}
       POSTGRES_HOST: postgres
@@ -12,6 +17,7 @@ services:
 
   celery-worker:
     environment:
+      <<: *kms-environment
       ENV: production
       FRONTEND_URL: ${AETERNA_PUBLIC_FRONTEND_URL:-https://claim.aeternarelay.com}
       POSTGRES_HOST: postgres
@@ -21,6 +27,7 @@ services:
 
   celery-beat:
     environment:
+      <<: *kms-environment
       ENV: production
       FRONTEND_URL: ${AETERNA_PUBLIC_FRONTEND_URL:-https://claim.aeternarelay.com}
       POSTGRES_HOST: postgres
@@ -34,6 +41,7 @@ services:
 
   flower:
     environment:
+      <<: *kms-environment
       ENV: production
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432

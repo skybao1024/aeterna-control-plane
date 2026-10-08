@@ -61,6 +61,13 @@ deployment, and production enablement remain separate launch actions.
 9. The personal-project MVP has no Multi-Region KMS replica, CloudHSM/custom key
    store, automatic Region failover, automatic rotation, recovery-specific
    cross-Region backup, or plaintext application fallback.
+10. The Owner's 2026-10-08 cost-controlled trial permits reuse of the existing
+    identity KMS key with explicit `AETERNA_KMS_ALLOW_SHARED_KEY=true`. Identity
+    contexts retain `identity-pii`, `identity-lookup`, and `identity-otp` purposes;
+    recovery retains `recovery-srs` and its opaque record binding. IAM policies
+    must restrict each workload to its operation and context. This revises the
+    prior rejection of a shared PII/SRS key and does not authorize bypassing
+    release, grant, mailbox verification, or claim-token checks.
 
 ## Consequences
 
@@ -79,7 +86,7 @@ deployment, and production enablement remain separate launch actions.
 
 ## Alternatives rejected
 
-Multi-Region KMS, CloudHSM/custom key stores, a shared PII/SRS key,
+Multi-Region KMS, CloudHSM/custom key stores, implicit unscoped shared-key access,
 application-generated SRS, plaintext retry storage, pre-release decrypt,
 query-string bearers, JWT claim tokens, global consumption after one contact,
 and live AWS acceptance inside I13 are rejected by public ADR 0014.

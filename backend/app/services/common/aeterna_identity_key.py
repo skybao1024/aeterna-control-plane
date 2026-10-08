@@ -95,6 +95,7 @@ class AwsKmsIdentityKeyProvider:
         key_arn: str,
         environment: str,
         recovery_key_arn: str = "",
+        allow_shared_key: bool = False,
         client=None,
     ):
         match = (
@@ -108,7 +109,8 @@ class AwsKmsIdentityKeyProvider:
             or not isinstance(environment, str)
             or environment not in {"production", "preview"}
             or not isinstance(recovery_key_arn, str)
-            or key_arn.lower() == recovery_key_arn.lower()
+            or type(allow_shared_key) is not bool
+            or (key_arn.lower() == recovery_key_arn.lower() and not allow_shared_key)
         ):
             raise IdentityKeyProviderUnavailable(IDENTITY_KEY_ERROR)
         self.region = region
@@ -272,4 +274,5 @@ def get_identity_key_provider() -> AwsKmsIdentityKeyProvider:
         key_arn=settings.AETERNA_IDENTITY_KMS_KEY_ARN,
         environment=settings.ENV,
         recovery_key_arn=settings.AETERNA_RECOVERY_KMS_KEY_ARN,
+        allow_shared_key=settings.AETERNA_KMS_ALLOW_SHARED_KEY,
     )
