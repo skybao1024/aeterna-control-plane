@@ -117,6 +117,12 @@ async def receive_aws_sns_event(
     if event is None:
         return ApiResponse.success_without_data()
     try:
+        if (
+            settings.AWS_SES_SNS_CONFIRMATION_CAPTURE_ENABLED
+            and await subscription.is_expected_test_message(event.provider_message_id)
+        ):
+            await subscription.record_event_receipt(event)
+            return ApiResponse.success_without_data()
         await delivery.record_callback(
             db,
             provider_name="aws-ses",

@@ -46,6 +46,36 @@ class AwsSnsSubscriptionService:
     async def clear_confirmation(self) -> None:
         await self.redis.delete(self.key_prefix + ":confirmation")
 
+    def _test_message_key(self, provider_message_id: str) -> str:
+        if (
+            not provider_message_id
+            or len(provider_message_id.encode("utf-8")) > 255
+            or any(
+                ord(character) < 33 or ord(character) == 127
+                for character in provider_message_id
+            )
+        ):
+            raise ValueError("Invalid setup message identifier")
+        return (
+            self.key_prefix
+            + ":test:"
+            + hashlib.sha256(provider_message_id.encode("utf-8")).hexdigest()
+        )
+
+    async def expect_test_message(self, provider_message_id: str) -> None:
+        """Authorize only this explicit operator test to bypass business Outbox lookup."""
+        await self.redis.set_with_ttl(
+            self._test_message_key(provider_message_id),
+            "1",
+            SNS_CONFIRMATION_TTL_SECONDS,
+        )
+
+    async def is_expected_test_message(self, provider_message_id: str) -> bool:
+        return await self.redis.get(self._test_message_key(provider_message_id)) == "1"
+
+    async def clear_test_message(self, provider_message_id: str) -> None:
+        await self.redis.delete(self._test_message_key(provider_message_id))
+
     async def record_event_receipt(self, event: AwsSesCallbackEvent) -> None:
         document = {
             "provider_message_id": event.provider_message_id,

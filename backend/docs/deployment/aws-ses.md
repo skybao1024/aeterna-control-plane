@@ -112,13 +112,20 @@ HTTPS endpoint, authentication status, and raw-delivery setting, then deletes
 the cached token. A `confirmed` result is independent of SES production access.
 
 Send one approved sandbox test to a verified recipient with the configured
-configuration set. The `status` command exposes short-lived, verified Send and
+configuration set. Immediately register its SES message ID with the operator
+script's `expect-event --message-id <SES_MESSAGE_ID>` command, using the same
+`--endpoint` argument. Only this explicitly registered message may bypass the
+business Outbox lookup while temporary capture is enabled; unknown messages
+retain the normal rejection behavior. Registration expires after 15 minutes
+and never creates a business delivery record. A callback that arrives before
+registration remains retryable, allowing the subsequent SNS retry to succeed.
+The `status` command exposes short-lived, verified Send and
 Delivery receipt metadata so the operator can compare the SES message ID;
 recipient addresses, mail content, and full provider payloads are excluded.
 An SDK test message may have no application Outbox row, so this evidence does
 not imply an application business event was delivered.
 
-After verification, run `clear`, set
+After verification, run `clear --message-id <SES_MESSAGE_ID>`, set
 `AWS_SES_SNS_CONFIRMATION_CAPTURE_ENABLED=false`, apply the public configuration
 through the release flow, and remove the temporary setup policy. Receipt
 metadata expires after 15 minutes. Ordinary signed callbacks continue to work;

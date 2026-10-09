@@ -61,10 +61,16 @@ async def operate(
     client: Any,
     service: AwsSnsSubscriptionService,
     now: datetime | None = None,
+    message_id: str | None = None,
 ) -> dict:
     """Run one explicit operation and return only redacted setup evidence."""
 
     validate_endpoint(endpoint)
+    if command == "expect-event":
+        if not message_id:
+            raise ValueError("An explicit setup message identifier is required")
+        await service.expect_test_message(message_id)
+        return {"status": "test-message-registered", "provider_message_id": message_id}
     if command == "request-confirmation":
         result = await asyncio.to_thread(
             client.subscribe,
@@ -122,6 +128,8 @@ async def operate(
         return {"status": "confirmed", "subscription_arn": subscription_arn}
     if command == "clear":
         await service.clear_confirmation()
+        if message_id:
+            await service.clear_test_message(message_id)
         return {"status": "confirmation-cache-cleared"}
 
     if command != "status":
@@ -184,6 +192,7 @@ async def run(args: argparse.Namespace) -> dict:
             topic_arn=topic_arn,
             client=client,
             service=AwsSnsSubscriptionService(redis, topic_arn),
+            message_id=args.message_id,
         )
     finally:
         await redis.redis.aclose()
@@ -192,10 +201,14 @@ async def run(args: argparse.Namespace) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=("status", "request-confirmation", "confirm", "clear")
+        "command",
+        choices=("status", "request-confirmation", "confirm", "expect-event", "clear"),
     )
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--profile", help="Authenticated operator AWS SDK profile")
+    parser.add_argument(
+        "--message-id", help="SES identifier for one explicit setup test"
+    )
     args = parser.parse_args(argv)
     try:
         result = asyncio.run(run(args))

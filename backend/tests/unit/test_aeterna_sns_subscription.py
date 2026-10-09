@@ -219,6 +219,86 @@ async def test_setup_receipts_contain_no_recipient_or_provider_payload():
 
 
 @pytest.mark.asyncio
+async def test_operator_test_registration_is_exact_topic_bound_and_expires():
+    redis = MemoryRedis()
+    service = AwsSnsSubscriptionService(redis, TOPIC)
+    peer_topic = AwsSnsSubscriptionService(redis, TOPIC + "-other")
+    result = await operate(
+        "expect-event",
+        endpoint=ENDPOINT,
+        topic_arn=TOPIC,
+        client=OperatorClient(),
+        service=service,
+        message_id="synthetic-ses-message",
+    )
+    assert result["status"] == "test-message-registered"
+    assert await service.is_expected_test_message("synthetic-ses-message") is True
+    assert await service.is_expected_test_message("other-message") is False
+    assert await peer_topic.is_expected_test_message("synthetic-ses-message") is False
+    assert list(redis.ttls.values()) == [SNS_CONFIRMATION_TTL_SECONDS]
+    await service.clear_test_message("synthetic-ses-message")
+    assert await service.is_expected_test_message("synthetic-ses-message") is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "enabled,registered,valid,status",
+    [
+        (True, True, True, 204),
+        (True, False, True, 503),
+        (False, True, True, 503),
+        (True, True, False, 401),
+    ],
+)
+async def test_only_registered_signed_tests_skip_business_outbox(
+    monkeypatch, enabled, registered, valid, status
+):
+    monkeypatch.setattr(
+        route.settings, "AWS_SES_SNS_CONFIRMATION_CAPTURE_ENABLED", enabled
+    )
+    subscription = AwsSnsSubscriptionService(MemoryRedis(), TOPIC)
+    if registered:
+        await subscription.expect_test_message("synthetic-ses-message")
+    verifier = AsyncMock()
+    verifier.verify_and_extract.return_value = AwsSesCallbackEvent(
+        provider_message_id="synthetic-ses-message",
+        callback_id="sns:synthetic-test",
+        callback_type="delivered",
+        occurred_at=NOW,
+    )
+    if not valid:
+        verifier.verify_and_extract.side_effect = AwsSnsVerificationError("Rejected")
+    delivery = AsyncMock()
+    delivery.record_callback.side_effect = RuntimeError("Unknown business delivery")
+    app = FastAPI()
+    app.include_router(route.router, prefix="/api/internal/v1/email-events")
+    app.dependency_overrides[route.get_db] = lambda: AsyncMock()
+    app.dependency_overrides[route.get_aws_sns_message_verifier] = lambda: verifier
+    app.dependency_overrides[route.get_aeterna_email_callback_service] = (
+        lambda: delivery
+    )
+    app.dependency_overrides[route.get_aws_sns_subscription_service] = (
+        lambda: subscription
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://test"
+    ) as client:
+        response = await client.post(
+            "/api/internal/v1/email-events/aws-sns",
+            content=b"{}",
+            headers={
+                "content-type": "text/plain",
+                "x-amz-sns-message-type": "Notification",
+            },
+        )
+    assert response.status_code == status
+    assert (await subscription.get_event_receipt("delivered") is not None) == (
+        status == 204
+    )
+    assert delivery.record_callback.call_count == int(valid and status != 204)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "enabled,valid,status", [(False, True, 401), (True, False, 401), (True, True, 204)]
 )

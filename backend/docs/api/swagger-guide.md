@@ -67,6 +67,9 @@ bounded Amazon SNS envelope for the configured topic, requires SignatureVersion
 subscription confirmation material is cached in Redis for at most 15 minutes.
 An authenticated operator confirms it through the backend setup script; the
 callback never follows a confirmation link or changes an SNS subscription.
+During this temporary setup window, only an operator-registered SES test
+message ID may be acknowledged without an application Outbox record. Its
+registration and verified receipt metadata expire after 15 minutes.
 See [AWS SES setup](../deployment/aws-ses.md) for the explicit operator workflow.
 
 Documentation is not an authorization boundary. Every protected route must
