@@ -61,10 +61,13 @@ message identifiers, recipient addresses, or message bodies.
 
 The AWS SES event callback is intentionally excluded from Client and
 Backoffice Swagger. `POST /api/internal/v1/email-events/aws-sns` accepts only a
-bounded Amazon SNS notification for the configured topic, requires
-SignatureVersion 2 verification, and records transport-only evidence. SNS
-subscription confirmation is an authenticated operator action and is not
-automatically followed by the application.
+bounded Amazon SNS envelope for the configured topic, requires SignatureVersion
+2 verification, and records transport-only evidence. When the temporary
+`AWS_SES_SNS_CONFIRMATION_CAPTURE_ENABLED` control is enabled, signed
+subscription confirmation material is cached in Redis for at most 15 minutes.
+An authenticated operator confirms it through the backend setup script; the
+callback never follows a confirmation link or changes an SNS subscription.
+See [AWS SES setup](../deployment/aws-ses.md) for the explicit operator workflow.
 
 Documentation is not an authorization boundary. Every protected route must
 enforce its authentication and authorization dependency even when production

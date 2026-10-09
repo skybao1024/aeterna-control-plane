@@ -21,6 +21,7 @@ public client protocol.
 ## Deployment
 
 - [AWS SES production email boundary](./deployment/aws-ses.md)
+- [Temporary SNS subscription setup policy](./deployment/aws-sns-setup-policy.example.json)
 - [AWS KMS delayed-recovery boundary](./deployment/aws-kms-recovery.md)
 - [AWS KMS production identity setup](./deployment/aws-kms-identity.md)
 

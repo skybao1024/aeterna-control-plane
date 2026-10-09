@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     AWS_SES_FROM_ADDRESS: str = ""
     AWS_SES_CONFIGURATION_SET: str = ""
     AWS_SES_SNS_TOPIC_ARN: str = ""
+    AWS_SES_SNS_CONFIRMATION_CAPTURE_ENABLED: bool = False
 
     # Aeterna I13 recovery SRS envelope boundary. AWS credentials are supplied
     # only through the standard IAM role/credential provider chain.

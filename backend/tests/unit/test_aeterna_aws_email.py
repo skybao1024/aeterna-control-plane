@@ -3,6 +3,7 @@
 import base64
 import json
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlencode
 
 import pytest
 from botocore.exceptions import ClientError
@@ -197,6 +198,111 @@ def sns_body(event_type: str, private_key, **event_members) -> bytes:
         private_key.sign(canonical, padding.PKCS1v15(), hashes.SHA256())
     ).decode()
     return json.dumps(outer, separators=(",", ":")).encode()
+
+
+def confirmation_body(private_key, **overrides) -> bytes:
+    token = "synthetic-confirmation-token"
+    outer = {
+        "Type": "SubscriptionConfirmation",
+        "MessageId": "11111111-2222-4333-8444-555555555555",
+        "TopicArn": TOPIC_ARN,
+        "Message": "Confirm the synthetic subscription.",
+        "Token": token,
+        "SubscribeURL": "https://sns.ap-southeast-1.amazonaws.com/?"
+        + urlencode(
+            {"Action": "ConfirmSubscription", "TopicArn": TOPIC_ARN, "Token": token}
+        ),
+        "Timestamp": NOW.isoformat(),
+        "SignatureVersion": "2",
+        "SigningCertURL": CERTIFICATE_URL,
+        **overrides,
+    }
+    fields = [
+        "Message",
+        "MessageId",
+        "SubscribeURL",
+        "Timestamp",
+        "Token",
+        "TopicArn",
+        "Type",
+    ]
+    canonical = "".join(f"{field}\n{outer[field]}\n" for field in fields).encode()
+    outer["Signature"] = base64.b64encode(
+        private_key.sign(canonical, padding.PKCS1v15(), hashes.SHA256())
+    ).decode()
+    return json.dumps(outer).encode()
+
+
+@pytest.mark.asyncio
+async def test_confirmation_requires_separate_verification_and_hides_token():
+    private_key, certificate = signing_material()
+
+    async def load_certificate(url):
+        assert url == CERTIFICATE_URL
+        return certificate
+
+    verifier = AwsSnsMessageVerifier(
+        topic_arn=TOPIC_ARN, certificate_loader=load_certificate, clock=lambda: NOW
+    )
+    body = confirmation_body(private_key)
+    with pytest.raises(AwsSnsVerificationError, match="type"):
+        await verifier.verify_and_extract(body, "SubscriptionConfirmation")
+    confirmation = await verifier.verify_subscription_confirmation(
+        body, "SubscriptionConfirmation"
+    )
+    assert confirmation.token == "synthetic-confirmation-token"
+    assert confirmation.topic_arn == TOPIC_ARN
+    assert confirmation.token not in repr(confirmation)
+    assert confirmation.subscribe_url not in repr(confirmation)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"TopicArn": TOPIC_ARN + "-other"},
+        {"SignatureVersion": "1"},
+        {"SubscribeURL": "https://example.com/confirmation"},
+        {"SubscribeURL": "https://[malformed/confirmation"},
+        {
+            "SubscribeURL": "https://sns.ap-southeast-1.amazonaws.com/?Action=ConfirmSubscription"
+        },
+        {"Token": "different-synthetic-token"},
+        {"Timestamp": (NOW - timedelta(minutes=16)).isoformat()},
+        {"Timestamp": (NOW + timedelta(minutes=6)).isoformat()},
+    ],
+)
+async def test_confirmation_rejects_wrong_topic_url_token_version_or_age(overrides):
+    private_key, certificate = signing_material()
+
+    async def load_certificate(_url):
+        return certificate
+
+    verifier = AwsSnsMessageVerifier(
+        topic_arn=TOPIC_ARN, certificate_loader=load_certificate, clock=lambda: NOW
+    )
+    with pytest.raises(AwsSnsVerificationError):
+        await verifier.verify_subscription_confirmation(
+            confirmation_body(private_key, **overrides), "SubscriptionConfirmation"
+        )
+
+
+@pytest.mark.asyncio
+async def test_confirmation_rejects_tampered_signed_fields():
+    private_key, certificate = signing_material()
+
+    async def load_certificate(_url):
+        return certificate
+
+    verifier = AwsSnsMessageVerifier(
+        topic_arn=TOPIC_ARN, certificate_loader=load_certificate, clock=lambda: NOW
+    )
+    document = json.loads(confirmation_body(private_key))
+    document["Token"] = "tampered-synthetic-token"
+    with pytest.raises(AwsSnsVerificationError, match="signature"):
+        await verifier.verify_subscription_confirmation(
+            json.dumps(document).encode(), "SubscriptionConfirmation"
+        )
 
 
 @pytest.mark.asyncio

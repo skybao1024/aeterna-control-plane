@@ -7,9 +7,9 @@ import binascii
 import json
 import re
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from datetime import UTC, datetime
-from urllib.parse import urlsplit
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 from cryptography import x509
@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 MAX_SNS_BODY_BYTES = 65_536
 MAX_SNS_CERTIFICATE_BYTES = 65_536
 MAX_SES_EVENT_BYTES = 32_768
+SNS_CONFIRMATION_TTL_SECONDS = 900
 
 
 class AwsSnsVerificationError(RuntimeError):
@@ -39,6 +40,17 @@ class AwsSesCallbackEvent:
     callback_type: str
     occurred_at: datetime
     reason_code: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AwsSnsSubscriptionConfirmation:
+    """Verified, short-lived confirmation material for an explicit operator action."""
+
+    topic_arn: str
+    message_id: str
+    occurred_at: datetime
+    token: str = field(repr=False)
+    subscribe_url: str = field(repr=False)
 
 
 CertificateLoader = Callable[[str], Awaitable[bytes]]
@@ -73,11 +85,46 @@ class AwsSnsMessageVerifier:
         body: bytes,
         message_type_header: str | None,
     ) -> AwsSesCallbackEvent | None:
+        outer = await self._verify_message(body, message_type_header, "Notification")
+        return self._extract_ses_event(outer)
+
+    async def verify_subscription_confirmation(
+        self,
+        body: bytes,
+        message_type_header: str | None,
+    ) -> AwsSnsSubscriptionConfirmation:
+        """Authenticate confirmation material without following any URL."""
+
+        outer = await self._verify_message(
+            body, message_type_header, "SubscriptionConfirmation"
+        )
+        occurred_at = self._timestamp(outer.get("Timestamp"))
+        age = self.clock().astimezone(UTC) - occurred_at
+        if (
+            not timedelta(minutes=-5)
+            <= age
+            <= timedelta(seconds=SNS_CONFIRMATION_TTL_SECONDS)
+        ):
+            raise AwsSnsVerificationError("SNS confirmation timestamp is not accepted")
+        token = self._text(outer, "Token", 4_096)
+        subscribe_url = self._text(outer, "SubscribeURL", 8_192)
+        self._validate_subscription_url(subscribe_url, token)
+        return AwsSnsSubscriptionConfirmation(
+            topic_arn=self.topic_arn,
+            message_id=self._text(outer, "MessageId", 250),
+            occurred_at=occurred_at,
+            token=token,
+            subscribe_url=subscribe_url,
+        )
+
+    async def _verify_message(
+        self, body: bytes, message_type_header: str | None, expected_type: str
+    ) -> dict:
         if not body or len(body) > MAX_SNS_BODY_BYTES:
             raise AwsSnsVerificationError("SNS callback body is invalid")
         outer = self._json_object(body)
         message_type = self._text(outer, "Type", 32)
-        if message_type != "Notification" or message_type_header != message_type:
+        if message_type != expected_type or message_type_header != message_type:
             raise AwsSnsVerificationError("SNS message type is not accepted")
         if self._text(outer, "TopicArn", 512) != self.topic_arn:
             raise AwsSnsVerificationError("SNS topic is not accepted")
@@ -98,7 +145,7 @@ class AwsSnsMessageVerifier:
                 self._certificate_cache.pop(next(iter(self._certificate_cache)))
             self._certificate_cache[certificate_url] = certificate_pem
         self._verify_signature(outer, certificate_pem)
-        return self._extract_ses_event(outer)
+        return outer
 
     def _extract_ses_event(self, outer: dict) -> AwsSesCallbackEvent | None:
         message = self._text(outer, "Message", MAX_SES_EVENT_BYTES)
@@ -194,13 +241,41 @@ class AwsSnsMessageVerifier:
 
     def _canonical_message(self, outer: dict) -> bytes:
         fields = ["Message", "MessageId"]
-        if "Subject" in outer:
-            fields.append("Subject")
-        fields.extend(["Timestamp", "TopicArn", "Type"])
+        if outer["Type"] == "SubscriptionConfirmation":
+            fields.extend(["SubscribeURL", "Timestamp", "Token", "TopicArn", "Type"])
+        else:
+            if "Subject" in outer:
+                fields.append("Subject")
+            fields.extend(["Timestamp", "TopicArn", "Type"])
         lines: list[str] = []
         for field in fields:
             lines.extend([field, self._text(outer, field, MAX_SES_EVENT_BYTES)])
         return ("\n".join(lines) + "\n").encode("utf-8")
+
+    def _validate_subscription_url(self, value: str, token: str) -> None:
+        suffix = "amazonaws.com.cn" if self.partition == "aws-cn" else "amazonaws.com"
+        try:
+            parsed = urlsplit(value)
+            port = parsed.port
+            query = parse_qs(parsed.query, strict_parsing=True)
+        except ValueError:
+            raise AwsSnsVerificationError("SNS confirmation URL is invalid") from None
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != f"sns.{self.region}.{suffix}"
+            or port is not None
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path != "/"
+            or parsed.fragment
+            or query
+            != {
+                "Action": ["ConfirmSubscription"],
+                "TopicArn": [self.topic_arn],
+                "Token": [token],
+            }
+        ):
+            raise AwsSnsVerificationError("SNS confirmation URL is invalid")
 
     def _validate_certificate_url(self, value: str) -> None:
         parsed = urlsplit(value)

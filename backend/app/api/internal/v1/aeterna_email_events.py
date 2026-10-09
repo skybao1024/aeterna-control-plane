@@ -3,6 +3,7 @@
 from functools import lru_cache
 
 from fastapi import APIRouter, Depends, Request
+from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +16,10 @@ from app.services.common.aeterna_aws_sns import (
     AwsSnsMessageVerifier,
     AwsSnsUnavailableError,
     AwsSnsVerificationError,
+)
+from app.services.common.aeterna_sns_subscription import (
+    AwsSnsSubscriptionService,
+    get_aws_sns_subscription_service,
 )
 from app.services.internal.aeterna_email_delivery import (
     AeternaEmailDeliveryService,
@@ -59,6 +64,7 @@ async def receive_aws_sns_event(
     db: AsyncSession = Depends(get_db),
     verifier: AwsSnsMessageVerifier = Depends(get_aws_sns_message_verifier),
     delivery: AeternaEmailDeliveryService = Depends(get_aeterna_email_callback_service),
+    subscription: AwsSnsSubscriptionService = Depends(get_aws_sns_subscription_service),
 ):
     """Verify an SNS envelope before recording redacted SES transport state."""
 
@@ -79,9 +85,23 @@ async def receive_aws_sns_event(
                 status_code=413,
             )
     try:
-        event = await verifier.verify_and_extract(
-            bytes(raw), request.headers.get("x-amz-sns-message-type")
-        )
+        message_type = request.headers.get("x-amz-sns-message-type")
+        if (
+            message_type == "SubscriptionConfirmation"
+            and settings.AWS_SES_SNS_CONFIRMATION_CAPTURE_ENABLED
+        ):
+            confirmation = await verifier.verify_subscription_confirmation(
+                bytes(raw), message_type
+            )
+            await subscription.stage_confirmation(confirmation)
+            return ApiResponse.success_without_data()
+        event = await verifier.verify_and_extract(bytes(raw), message_type)
+    except RedisError:
+        raise APIException(
+            code=4103,
+            message="Subscription setup is temporarily unavailable",
+            status_code=503,
+        ) from None
     except AwsSnsUnavailableError:
         raise APIException(
             code=4103,
@@ -106,7 +126,9 @@ async def receive_aws_sns_event(
             occurred_at=event.occurred_at,
             reason_code=event.reason_code,
         )
-    except (RuntimeError, SQLAlchemyError, ValueError):
+        if settings.AWS_SES_SNS_CONFIRMATION_CAPTURE_ENABLED:
+            await subscription.record_event_receipt(event)
+    except (RedisError, RuntimeError, SQLAlchemyError, ValueError):
         await db.rollback()
         raise APIException(
             code=4103,

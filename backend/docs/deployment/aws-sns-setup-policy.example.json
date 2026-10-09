@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SubscribeExactCallback",
+      "Effect": "Allow",
+      "Action": "sns:Subscribe",
+      "Resource": "arn:aws:sns:ap-southeast-1:800168266179:aeterna-ses-events",
+      "Condition": {
+        "StringEquals": {
+          "sns:Protocol": "https",
+          "sns:Endpoint": "https://api.aeternarelay.com/api/internal/v1/email-events/aws-sns"
+        }
+      }
+    },
+    {
+      "Sid": "ConfirmAndInspectExactTopic",
+      "Effect": "Allow",
+      "Action": [
+        "sns:ConfirmSubscription",
+        "sns:ListSubscriptionsByTopic",
+        "sns:GetSubscriptionAttributes"
+      ],
+      "Resource": "arn:aws:sns:ap-southeast-1:800168266179:aeterna-ses-events"
+    }
+  ]
+}
