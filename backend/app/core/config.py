@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     HTTP_PROXY: str = "http://127.0.0.1:7890"
     HTTPS_PROXY: str = "http://127.0.0.1:7890"
 
-    # Email configuration
+    # Local development sink only; application delivery selects the shared adapter.
     MAIL_MAILER: str = "smtp"
     MAIL_HOST: str = "localhost"
     MAIL_PORT: int = 1025
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     MAIL_FROM_NAME: str = "Aeterna"
     MAIL_ENCRYPTION: str = "none"
 
-    # Aeterna I12 production email boundary. Credentials are intentionally not
+    # Unified application email boundary. Credentials are intentionally not
     # configured here; AWS uses the standard IAM role/credential provider chain.
     AETERNA_EMAIL_PROVIDER: str = "disabled"
     AETERNA_EMAIL_PRODUCTION_ENABLED: bool = False
@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     AETERNA_RECOVERY_KMS_KEY_ARN: str = ""
     AETERNA_RECOVERY_LOCAL_TEST_KEY: str = ""
 
-    # Brevo configuration (alternative email provider)
+    # Legacy compatibility fields; no application mail uses the Brevo provider.
     BREVO_API_KEY: str = ""
     BREVO_EMAIL_FROM: str = "noreply@example.com"
     BREVO_EMAIL_FROM_NAME: str = "Aeterna"

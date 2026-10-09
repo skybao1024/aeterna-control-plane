@@ -98,3 +98,58 @@ does not claim that a recipient was verified solely from `processed: true`;
 the signed Owner status remains authoritative. The isolated native, browser,
 Mailpit, and synthetic bounce journey is documented in the client repository's
 M04 result note.
+
+## Shared application transport repair (2026-10-09)
+
+The existing SES v2 adapter and provider factory now serve every application
+email entry point. `EmailService` retains template rendering and the immediate
+account/auth delivery-result contract while delegating to that factory;
+notifications and delayed-recovery email retain the existing durable Outbox.
+The separate FastMail/synchronous SMTP fallback and unused Brevo sender are
+removed. Production and preview require the project gate and complete SES
+configuration, explicit development permits only the local sink, and unknown
+environments fail closed. There is no fallback or automatic replay after an
+ambiguous SES result.
+
+Immediate facade messages receive an adapter-owned delivery marker so signed,
+exact-topic SNS callbacks can be acknowledged without Outbox state changes.
+Missing or unknown markers retain the original message lookup and rejection;
+the repair does not add immediate-mail delivery tracking or bounce suppression.
+AWS client-construction errors become redacted failures at the existing send
+boundary, preserving challenge failure status and best-effort security notices.
+
+This repair changes delivery transport only. It retains the desktop protocol,
+fixed email copy/templates, challenge lifetimes, consent and recovery gates,
+suppression and once-only send authorization, public error semantics, and
+sensitive-data handling. The earlier verification counts above remain historical
+I12 evidence; they are not results of this repair. No AWS resource, server
+configuration, deployment, or live send is authorized by the local repair.
+Current activation prerequisites and the distinction between AWS sandbox
+status and the project gate are recorded in the
+[SES guide](../deployment/aws-ses.md).
+
+Verification for this repair ran inside the Docker backend service:
+
+- The four focused unit modules `tests/unit/test_aeterna_verification_email.py`,
+  `tests/unit/test_aeterna_aws_email.py`, `tests/unit/test_aeterna_notification.py`,
+  and `tests/unit/test_aeterna_sns_subscription.py` passed 121 tests with three
+  existing deprecation warnings.
+- The three integration modules `tests/integration/test_aeterna_identity_protocol.py`,
+  `tests/integration/test_aeterna_notification.py`, and
+  `tests/integration/test_aeterna_recovery.py` passed 36 tests with two existing
+  deprecation warnings. They used a temporary isolated PostgreSQL instance
+  prepared through the existing migrations, leaving the ordinary development
+  database untouched. The temporary test container was removed after the run.
+- The integration matrix includes three SES-backed synthetic Outbox cases:
+  read timeout and invalid acceptance remain terminally `ambiguous`, while
+  throttling remains terminally `failed` because SES has no cross-request
+  idempotency guarantee. Each verifies one provider call and no replay on
+  another dispatch attempt. Provider clients were mocked; no AWS request or
+  real email was sent.
+- Focused `black --check`, `isort --check-only`, and critical Flake8 checks
+  (`E9,F63,F7,F82`) passed on all 11 changed Python files. `git diff --check`
+  also passed.
+
+Frontend and native checks were unnecessary for this backend transport change:
+HTTP contracts, email templates, frontend code, and desktop code are unchanged.
+No frontend or native build was run.

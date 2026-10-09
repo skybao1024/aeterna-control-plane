@@ -39,6 +39,7 @@ class AeternaEmailEnvelope:
     subject: str
     text_body: str
     html_body: str
+    track_in_outbox: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +85,11 @@ class SmtpDevelopmentEmailAdapter:
         envelope: AeternaEmailEnvelope,
         idempotency_key: str,
     ) -> ProviderAcceptance:
+        if settings.ENV != "development":
+            raise EmailDeliveryFailure(
+                "development-smtp-environment-not-local",
+                retryable=False,
+            )
         if settings.MAIL_HOST not in {
             "localhost",
             "127.0.0.1",
@@ -180,6 +186,11 @@ class AwsSesEmailAdapter:
                 "aws-ses-envelope-invalid", retryable=False
             ) from None
         trace_key = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+        tags = [{"Name": "aeterna-event", "Value": trace_key}]
+        if not envelope.track_in_outbox:
+            # Immediate account mail has no durable delivery row. This fixed tag
+            # lets authenticated callbacks avoid an unmatched Outbox lookup.
+            tags.append({"Name": "aeterna-delivery", "Value": "immediate"})
         try:
             response = await asyncio.to_thread(
                 self.client.send_email,
@@ -195,7 +206,7 @@ class AwsSesEmailAdapter:
                     }
                 },
                 ConfigurationSetName=self.configuration_set,
-                EmailTags=[{"Name": "aeterna-event", "Value": trace_key}],
+                EmailTags=tags,
             )
         except ClientError as exc:
             raise self._client_error(exc) from None
@@ -269,18 +280,29 @@ class UnavailableProductionEmailAdapter:
     provider_name = "unavailable-production-provider"
     supports_idempotency = False
 
+    def __init__(self, *, failure_code: str = "production-email-provider-unapproved"):
+        self.failure_code = failure_code
+
     async def send(
         self,
         envelope: AeternaEmailEnvelope,
         idempotency_key: str,
     ) -> ProviderAcceptance:
         raise EmailDeliveryFailure(
-            "production-email-provider-unapproved",
+            self.failure_code,
             retryable=False,
         )
 
 
 def _aws_ses_settings_complete() -> bool:
+    try:
+        validated_sender = validate_email(
+            settings.AWS_SES_FROM_ADDRESS, check_deliverability=False
+        )
+        if validated_sender.ascii_email is None:
+            return False
+    except EmailNotValidError:
+        return False
     topic_match = re.fullmatch(
         r"arn:(aws|aws-us-gov|aws-cn):sns:([^:]+):[0-9]{12}:[A-Za-z0-9_-]{1,256}",
         settings.AWS_SES_SNS_TOPIC_ARN,
@@ -296,42 +318,45 @@ def _aws_ses_settings_complete() -> bool:
 
 
 def validate_email_delivery_configuration() -> None:
-    """Reject a partially enabled production provider at startup."""
+    """Reject a partially enabled production or preview provider at startup."""
 
-    if settings.ENV == "production" and settings.AETERNA_EMAIL_PRODUCTION_ENABLED:
+    if (
+        settings.ENV in {"production", "preview"}
+        and settings.AETERNA_EMAIL_PRODUCTION_ENABLED
+    ):
         if not _aws_ses_settings_complete():
             raise RuntimeError(
-                "Production AWS SES email configuration is incomplete or invalid"
+                "Enabled AWS SES email configuration is incomplete or invalid"
             )
-        try:
-            validated_sender = validate_email(
-                settings.AWS_SES_FROM_ADDRESS,
-                check_deliverability=False,
-            )
-            if validated_sender.ascii_email is None:
-                raise EmailNotValidError("SES requires an ASCII mailbox")
-        except EmailNotValidError:
-            raise RuntimeError("Production AWS SES sender address is invalid") from None
 
 
 def get_aeterna_email_adapter() -> AeternaEmailAdapter:
     """Select only a completely configured and explicitly enabled boundary."""
 
-    if settings.ENV == "production":
+    if settings.ENV in {"production", "preview"}:
         if settings.AETERNA_EMAIL_PRODUCTION_ENABLED and _aws_ses_settings_complete():
-            client = boto3.client(
-                "sesv2",
-                region_name=settings.AWS_SES_REGION,
-                config=Config(
+            try:
+                client = boto3.client(
+                    "sesv2",
                     region_name=settings.AWS_SES_REGION,
-                    signature_version="v4",
-                    retries={"total_max_attempts": 1, "mode": "standard"},
-                ),
-            )
+                    config=Config(
+                        region_name=settings.AWS_SES_REGION,
+                        signature_version="v4",
+                        retries={"total_max_attempts": 1, "mode": "standard"},
+                    ),
+                )
+            except Exception:
+                # Resolve dependencies without exposing credential-chain failures
+                # or aborting best-effort notices before the send boundary.
+                return UnavailableProductionEmailAdapter(
+                    failure_code="aws-ses-configuration-error"
+                )
             return AwsSesEmailAdapter(
                 client=client,
                 from_address=settings.AWS_SES_FROM_ADDRESS,
                 configuration_set=settings.AWS_SES_CONFIGURATION_SET,
             )
         return UnavailableProductionEmailAdapter()
-    return SmtpDevelopmentEmailAdapter()
+    if settings.ENV == "development":
+        return SmtpDevelopmentEmailAdapter()
+    return UnavailableProductionEmailAdapter()

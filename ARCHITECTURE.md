@@ -148,11 +148,27 @@ rows. I11 intents materialize into a second provider-neutral email Outbox whose
 `provider_accepted`, `delivered`, and `bounced` states describe transport only.
 They never set Owner warning proof or imply human reading. Automatic retry is
 permitted only through an adapter that honors the persisted idempotency key;
-ambiguous SMTP outcomes stop for reconciliation instead of risking a duplicate.
-AWS SES is the selected production adapter and signed SNS is the callback
-boundary. External delivery remains disabled until the Region, sender identity,
-operating jurisdictions, provider use-case acceptance, and live-send matrix are
-approved. See backend ADR 0003.
+ambiguous provider outcomes stop for reconciliation instead of risking a
+duplicate. Every application email resolves through the shared provider
+factory: immediate account/auth emails retain `EmailService` rendering and
+delivery results, while invitations, reminders, release notices, and recovery
+emails retain durable Outbox authorization. Production and preview use AWS SES
+v2 only when the explicit project flag and complete configuration are valid;
+explicit development uses the local SMTP sink. Unknown environments fail
+closed, and there is no SMTP fallback after a SES failure. SES SDK sends make
+one total attempt and do not automatically replay ambiguity. Signed SNS remains
+the authenticated callback boundary. The exact adapter-owned immediate-mail
+marker is acknowledged without business-state changes after signature and
+topic verification; unmarked or unknown messages retain the original Outbox
+lookup. Transport evidence never establishes mailbox verification, contact
+consent, recovery authority, or Owner warning proof.
+See backend ADR 0003 and the SES deployment guide.
+
+AWS SES production-access status is separate from the project enable flag.
+Pending production access permits sandbox sends to recipients verified in the
+sending Region within AWS quotas; it does not authorize application enablement.
+Reported identity verification alone does not establish the Region, sender,
+test recipients, current server configuration, or live-send acceptance.
 
 I13 stores one KMS ciphertext and non-secret binding metadata for each sealed
 device recovery record. Only authoritative `RELEASED` plus an accepted and

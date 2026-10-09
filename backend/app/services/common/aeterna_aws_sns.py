@@ -198,11 +198,18 @@ class AwsSnsMessageVerifier:
         else:
             return None
 
+        callback_id = f"sns:{self._text(outer, 'MessageId', 250)}"
+        occurred_at = self._timestamp(timestamp_value)
+        tags = mail.get("tags")
+        if isinstance(tags, dict) and tags.get("aeterna-delivery") == ["immediate"]:
+            # Immediate account mail has no Outbox delivery state to update.
+            return None
+
         return AwsSesCallbackEvent(
             provider_message_id=provider_message_id,
-            callback_id=f"sns:{self._text(outer, 'MessageId', 250)}",
+            callback_id=callback_id,
             callback_type=callback_type,
-            occurred_at=self._timestamp(timestamp_value),
+            occurred_at=occurred_at,
             reason_code=reason_code,
         )
 

@@ -34,9 +34,10 @@ Development endpoints:
 - Health check: <http://localhost:8001/api/v1/config/health>
 - Development email inbox: <http://127.0.0.1:8025>
 
-The development Compose override sends account verification email to the local
-Mailpit inbox. It exposes only the inbox UI on the loopback interface; SMTP is
-available to the backend container on the Compose network. Use the actual API
+The development Compose override sends all application email through the shared
+local Mailpit adapter, including account verification and Outbox delivery. It
+exposes only the inbox UI on the loopback interface; SMTP is available to the
+backend container on the Compose network. Use the actual API
 port printed by `./deploy.sh dev` when it differs from the example above. For
 the desktop client, set `AETERNA_API_ORIGIN` to that loopback API origin while
 building or launching the native development app.
@@ -80,6 +81,18 @@ Do not share their values in diagnostics or support messages.
 
 Runtime environment files are confidential. Never commit them or paste their
 values into issues, logs, or AI conversations.
+
+All application mail uses the same provider selection. Only explicit
+`ENV=development` permits the controlled local SMTP sink. Production and
+preview require `AETERNA_EMAIL_PROVIDER=aws-ses`, the explicit
+`AETERNA_EMAIL_PRODUCTION_ENABLED` gate, and complete SES Region, sender,
+configuration-set, and exact SNS topic configuration. A disabled gate fails
+closed; `MAIL_*` cannot select a production SMTP alternative. See the
+[SES application email guide](./backend/docs/deployment/aws-ses.md) for
+placeholder configuration and bounded operator checks. AWS production-access
+approval is independent: a pending request still permits sandbox sends to
+recipients verified in the sending Region within its quotas. Neither AWS
+approval nor this local transport repair enables application sending.
 
 ## Production CI/CD
 

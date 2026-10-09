@@ -381,3 +381,90 @@ async def test_callback_returns_retryable_failure_when_confirmation_cache_is_dow
         )
     assert response.status_code == 503
     assert TOKEN not in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("capture_enabled", [False, True])
+@pytest.mark.parametrize("valid", [False, True])
+async def test_ignored_verified_event_has_no_delivery_or_subscription_effect(
+    monkeypatch, capture_enabled, valid
+):
+    monkeypatch.setattr(
+        route.settings, "AWS_SES_SNS_CONFIRMATION_CAPTURE_ENABLED", capture_enabled
+    )
+    verifier = AsyncMock()
+    verifier.verify_and_extract.return_value = None
+    if not valid:
+        verifier.verify_and_extract.side_effect = AwsSnsVerificationError("Rejected")
+    delivery = AsyncMock()
+    subscription = AsyncMock()
+    db = AsyncMock()
+    app = FastAPI()
+    app.include_router(route.router, prefix="/api/internal/v1/email-events")
+    app.dependency_overrides[route.get_db] = lambda: db
+    app.dependency_overrides[route.get_aws_sns_message_verifier] = lambda: verifier
+    app.dependency_overrides[route.get_aeterna_email_callback_service] = (
+        lambda: delivery
+    )
+    app.dependency_overrides[route.get_aws_sns_subscription_service] = (
+        lambda: subscription
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://test"
+    ) as client:
+        response = await client.post(
+            "/api/internal/v1/email-events/aws-sns",
+            content=b"{}",
+            headers={
+                "content-type": "text/plain",
+                "x-amz-sns-message-type": "Notification",
+            },
+        )
+    assert response.status_code == (204 if valid else 401)
+    verifier.verify_and_extract.assert_awaited_once_with(b"{}", "Notification")
+    assert delivery.mock_calls == []
+    assert subscription.mock_calls == []
+    db.rollback.assert_not_called()
+
+
+@pytest.mark.parametrize("environment", ["production", "preview"])
+@pytest.mark.parametrize("send_enabled", [False, True])
+def test_callback_verifier_uses_configured_topic_in_deployed_environments(
+    monkeypatch, environment, send_enabled
+):
+    monkeypatch.setattr(route.settings, "ENV", environment)
+    monkeypatch.setattr(route.settings, "AETERNA_EMAIL_PROVIDER", "aws-ses")
+    monkeypatch.setattr(
+        route.settings, "AETERNA_EMAIL_PRODUCTION_ENABLED", send_enabled
+    )
+    monkeypatch.setattr(route.settings, "AWS_SES_SNS_TOPIC_ARN", TOPIC)
+
+    verifier = route.get_aws_sns_message_verifier()
+
+    assert isinstance(verifier, route.AwsSnsMessageVerifier)
+    assert verifier.topic_arn == TOPIC
+    assert verifier.region == "ap-southeast-1"
+
+
+@pytest.mark.parametrize(
+    "environment,provider,topic",
+    [
+        ("development", "aws-ses", TOPIC),
+        ("test", "aws-ses", TOPIC),
+        ("preview", "smtp", TOPIC),
+        ("preview", "aws-ses", ""),
+        ("preview", "aws-ses", "invalid-topic"),
+    ],
+)
+def test_callback_verifier_rejects_unconfigured_or_unsupported_boundary(
+    monkeypatch, environment, provider, topic
+):
+    monkeypatch.setattr(route.settings, "ENV", environment)
+    monkeypatch.setattr(route.settings, "AETERNA_EMAIL_PROVIDER", provider)
+    monkeypatch.setattr(route.settings, "AWS_SES_SNS_TOPIC_ARN", topic)
+
+    with pytest.raises(route.APIException) as exc_info:
+        route.get_aws_sns_message_verifier()
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.code == 4103

@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
+from botocore.exceptions import ClientError, ReadTimeoutError
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy import delete, select
@@ -42,6 +43,7 @@ from app.schemas.client.aeterna_notification import (
 from app.services.client.aeterna_notification import AeternaNotificationService
 from app.services.common.aeterna_email_adapter import (
     AeternaEmailEnvelope,
+    AwsSesEmailAdapter,
     EmailDeliveryFailure,
     ProviderAcceptance,
 )
@@ -510,6 +512,99 @@ async def test_wrong_device_proof_cannot_create_or_elevate_contact():
     assert exc_info.value.code == "device.proof_invalid"
     async with get_session_local()() as db:
         assert await db.scalar(select(AeternaContact.id)) is None
+
+
+@pytest.mark.parametrize(
+    "error,expected_status,expected_code",
+    [
+        (
+            ReadTimeoutError(endpoint_url="https://synthetic-ses.example.com"),
+            "ambiguous",
+            "aws-ses-outcome-ambiguous",
+        ),
+        (None, "ambiguous", "aws-ses-invalid-acceptance"),
+        (
+            ClientError(
+                {
+                    "Error": {
+                        "Code": "TooManyRequestsException",
+                        "Message": "synthetic-provider-detail",
+                    },
+                    "ResponseMetadata": {"HTTPStatusCode": 429},
+                },
+                "SendEmail",
+            ),
+            "failed",
+            "aws-ses-throttled",
+        ),
+    ],
+)
+async def test_ses_outbox_failure_is_terminal_without_provider_replay(
+    error, expected_status, expected_code
+):
+    now = datetime(2026, 9, 27, 12, tzinfo=UTC)
+    clock = MutableClock(now)
+    fixture = await create_account(now)
+    notification = AeternaNotificationService(key_provider=synthetic_keys, clock=clock)
+    created = await create_contact(
+        notification, fixture, "ses-terminal@example.com", "CONFIRM_NOW"
+    )
+    contact_id = uuid.UUID(created["contact_id"])
+    event = (await get_email_events(contact_id))[0]
+    calls = []
+
+    class FakeSesClient:
+        def send_email(self, **kwargs):
+            calls.append(kwargs)
+            if error is not None:
+                raise error
+            return {}
+
+    adapter = AwsSesEmailAdapter(
+        client=FakeSesClient(),
+        from_address="noreply@example.com",
+        configuration_set="aeterna-events",
+        clock=clock,
+    )
+    assert adapter.supports_idempotency is False
+    delivery = AeternaEmailDeliveryService(
+        adapter=adapter, key_provider=synthetic_keys, clock=clock
+    )
+    async with get_session_local()() as db:
+        first = await delivery.dispatch_event(db, event.id)
+    assert first.status == expected_status
+    assert first.attempt_number == 1
+
+    clock.current += timedelta(hours=2)
+    async with get_session_local()() as db:
+        replay = await delivery.dispatch_event(db, event.id)
+    assert replay.status == expected_status
+    assert replay.attempt_number == 1
+    assert len(calls) == 1
+    assert calls[0]["FromEmailAddress"] == "noreply@example.com"
+    assert calls[0]["ConfigurationSetName"] == "aeterna-events"
+    assert [tag["Name"] for tag in calls[0]["EmailTags"]] == ["aeterna-event"]
+
+    stored = (await get_email_events(contact_id))[0]
+    assert stored.status == expected_status
+    assert stored.attempt_count == 1
+    assert stored.last_error_code == expected_code
+    assert stored.failed_at == now
+    assert stored.next_attempt_at == now
+    async with get_session_local()() as db:
+        attempts = list(
+            await db.scalars(
+                select(AeternaEmailDeliveryAttempt).where(
+                    AeternaEmailDeliveryAttempt.outbox_event_id == event.id
+                )
+            )
+        )
+    assert len(attempts) == 1
+    assert attempts[0].attempt_number == 1
+    assert attempts[0].error_code == expected_code
+    assert attempts[0].status == (
+        "ambiguous_failure" if expected_status == "ambiguous" else "failed"
+    )
 
 
 async def test_retry_concurrency_callbacks_and_bounce_visibility():

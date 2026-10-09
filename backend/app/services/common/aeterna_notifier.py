@@ -14,7 +14,7 @@ class AeternaAccountNotifier(Protocol):
 
 
 class EmailAeternaAccountNotifier:
-    """SMTP adapter that receives plaintext only for the duration of a send."""
+    """Account mail facade that receives plaintext only for the duration of a send."""
 
     def __init__(self, email_service: EmailService):
         self.email_service = email_service

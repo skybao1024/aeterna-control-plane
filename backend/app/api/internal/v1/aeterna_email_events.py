@@ -36,10 +36,10 @@ def _verifier_for_topic(topic_arn: str) -> AwsSnsMessageVerifier:
 
 
 def get_aws_sns_message_verifier() -> AwsSnsMessageVerifier:
-    """Build the verifier only for an explicitly enabled SES boundary."""
+    """Build the verifier for a configured production or preview SES topic."""
 
     if (
-        settings.ENV != "production"
+        settings.ENV not in {"production", "preview"}
         or settings.AETERNA_EMAIL_PROVIDER != "aws-ses"
         or not settings.AWS_SES_SNS_TOPIC_ARN
     ):

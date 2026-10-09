@@ -1,6 +1,7 @@
 """Real-PostgreSQL evidence for I09 account and device binding."""
 
 import base64
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -8,10 +9,13 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 import rfc8785
+from botocore.exceptions import PartialCredentialsError
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi import Request
 from sqlalchemy import delete, func, select
 
+from app.api.client.v1.aeterna_identity import initiate_account_challenge
 from app.db.base import get_session_local
 from app.exceptions.aeterna_protocol import AeternaProtocolException
 from app.models.aeterna_identity import (
@@ -33,6 +37,7 @@ from app.schemas.client.aeterna_protocol import (
     DeviceBindingStatusRequest,
 )
 from app.services.client.aeterna_identity import AeternaIdentityService
+from app.services.common.aeterna_notifier import get_aeterna_account_notifier
 from app.services.common.aeterna_security import AeternaIdentityKeys
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -652,6 +657,96 @@ async def test_complete_first_approval_cancellation_and_delayed_binding_paths(
             ).all()
         )
         assert states == ["active", "active", "cancelled", "active"]
+
+
+async def test_ses_initialization_failure_preserves_challenge_202_and_no_resend(
+    identity_context, monkeypatch, caplog
+):
+    service, clock, _notifier = identity_context
+    settings = {
+        "ENV": "production",
+        "AETERNA_EMAIL_PROVIDER": "aws-ses",
+        "AETERNA_EMAIL_PRODUCTION_ENABLED": True,
+        "AWS_SES_REGION": "ap-southeast-1",
+        "AWS_SES_FROM_ADDRESS": "noreply@example.com",
+        "AWS_SES_CONFIGURATION_SET": "aeterna-events",
+        "AWS_SES_SNS_TOPIC_ARN": (
+            "arn:aws:sns:ap-southeast-1:123456789012:aeterna-events"
+        ),
+    }
+    for name, value in settings.items():
+        monkeypatch.setattr(
+            f"app.services.common.aeterna_email_adapter.settings.{name}", value
+        )
+    client_calls = []
+
+    def create_client(*args, **kwargs):
+        client_calls.append((args, kwargs))
+        raise PartialCredentialsError(
+            provider="synthetic-sensitive-detail", cred_var="synthetic-missing-variable"
+        )
+
+    monkeypatch.setattr(
+        "app.services.common.aeterna_email_adapter.boto3.client", create_client
+    )
+    notifier = get_aeterna_account_notifier()
+    adapter_send = notifier.email_service.adapter.send
+    send_calls = []
+
+    async def record_send(envelope, idempotency_key):
+        send_calls.append(idempotency_key)
+        return await adapter_send(envelope, idempotency_key)
+
+    monkeypatch.setattr(notifier.email_service.adapter, "send", record_send)
+    document = {
+        "protocol_version": 1,
+        "request_id": new_request_id(),
+        "email": SYNTHETIC_EMAIL,
+        "purpose": "account_onboarding",
+    }
+    body = json.dumps(document).encode()
+
+    async def receive():
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    session_factory = get_session_local()
+    async with session_factory() as db:
+        responses = []
+        for _ in range(2):
+            request = Request(
+                {
+                    "type": "http",
+                    "method": "POST",
+                    "path": "/account-challenges",
+                    "headers": [(b"content-type", b"application/json")],
+                    "client": ("198.51.100.88", 80),
+                },
+                receive,
+            )
+            response = await initiate_account_challenge(
+                request, db=db, service=service, notifier=notifier
+            )
+            assert response.status_code == 202
+            responses.append(json.loads(response.body))
+        assert responses[0] == responses[1]
+        data = responses[0]["data"]
+        assert set(data) == {
+            "challenge_id",
+            "expires_in_seconds",
+            "resend_after_seconds",
+        }
+        assert data["expires_in_seconds"] == 600
+        assert data["resend_after_seconds"] == 60
+        stored = await db.get(AeternaAccountChallenge, uuid.UUID(data["challenge_id"]))
+        assert stored is not None
+        assert stored.status == "pending"
+        assert stored.delivery_status == "failed"
+        assert stored.expires_at == clock.now() + timedelta(minutes=10)
+        assert stored.resend_after == clock.now() + timedelta(seconds=60)
+
+    assert len(client_calls) == 1
+    assert len(send_calls) == 1
+    assert "synthetic-sensitive-detail" not in caplog.text
 
 
 async def test_challenge_exhausts_after_five_constant_shape_failures(identity_context):

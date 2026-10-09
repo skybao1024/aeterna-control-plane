@@ -1,50 +1,23 @@
-import asyncio
-import logging
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+"""Application email rendering through the shared, constrained provider boundary."""
 
-from fastapi_mail import ConnectionConfig, FastMail, MessageSchema
+import logging
+import uuid
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Any
+
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from app.core.config import settings
-
-# Configure logging
-logger = logging.getLogger("email_service")
-
-# Configure FastMail connection
-mail_conf = ConnectionConfig(
-    MAIL_USERNAME=settings.MAIL_USERNAME,
-    MAIL_PASSWORD=settings.MAIL_PASSWORD,
-    MAIL_FROM=settings.MAIL_FROM_ADDRESS,
-    MAIL_PORT=settings.MAIL_PORT,
-    MAIL_SERVER=settings.MAIL_HOST,
-    MAIL_FROM_NAME=settings.MAIL_FROM_NAME,
-    MAIL_STARTTLS=(
-        settings.MAIL_ENCRYPTION.lower() == "tls"
-        if hasattr(settings, "MAIL_ENCRYPTION")
-        else False
-    ),
-    MAIL_SSL_TLS=(
-        settings.MAIL_ENCRYPTION.lower() == "ssl"
-        if hasattr(settings, "MAIL_ENCRYPTION")
-        else False
-    ),
-    USE_CREDENTIALS=bool(settings.MAIL_USERNAME and settings.MAIL_PASSWORD),
-    VALIDATE_CERTS=True,
+from app.services.common.aeterna_email_adapter import (
+    AeternaEmailAdapter,
+    AeternaEmailEnvelope,
+    EmailDeliveryFailure,
+    get_aeterna_email_adapter,
 )
 
-# Initialize FastMail
-fastmail = FastMail(mail_conf)
+logger = logging.getLogger("email_service")
 
-# Set template directory
 TEMPLATES_DIR = Path(__file__).parent.parent.parent.parent / "resources" / "emails"
-if not TEMPLATES_DIR.exists():
-    TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
-
-# Initialize Jinja2 environment
 jinja_env = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
     autoescape=select_autoescape(["html", "xml"]),
@@ -53,135 +26,111 @@ jinja_env = Environment(
 )
 
 
+class _EmailTextRenderer(HTMLParser):
+    """Extract readable copy and links from existing application HTML templates."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.hidden_depth = 0
+        self.link_targets: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"head", "style", "script"}:
+            self.hidden_depth += 1
+        if self.hidden_depth:
+            return
+        if tag in {"p", "div", "br", "li", "h1", "h2", "h3", "tr", "hr"}:
+            self.parts.append("\n")
+        if tag == "a":
+            self.link_targets.append(dict(attrs).get("href") or "")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"head", "style", "script"}:
+            self.hidden_depth = max(0, self.hidden_depth - 1)
+            return
+        if self.hidden_depth:
+            return
+        if tag == "a" and self.link_targets:
+            target = self.link_targets.pop()
+            if target:
+                self.parts.append(f" ({target})")
+        if tag in {"p", "div", "li", "h1", "h2", "h3", "tr"}:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self.hidden_depth:
+            self.parts.append(data)
+
+    def render(self, html_content: str) -> str:
+        self.feed(html_content)
+        self.close()
+        lines = (" ".join(line.split()) for line in "".join(self.parts).splitlines())
+        return "\n".join(line for line in lines if line)
+
+
 class EmailService:
-    """Email service class providing email sending functionality"""
+    """Render account email and submit exactly once to the shared adapter."""
 
-    def __init__(self, thread_pool_service=None):
-        """Initialize EmailService with dependencies"""
-        from app.services.common.thread_pool import get_thread_pool_service
-
-        self.thread_pool_service = thread_pool_service or get_thread_pool_service()
-
-    def _send_sync(
-        self,
-        to_emails: Union[str, List[str]],
-        subject: str,
-        html_content: str,
-        from_email: Optional[str] = None,
-        from_name: Optional[str] = None,
-    ) -> bool:
-        """
-        Send email using synchronous method
-        """
-        if isinstance(to_emails, str):
-            to_emails = [to_emails]
-
-        message = MIMEMultipart("alternative")
-        message["Subject"] = subject
-
-        from_email = from_email or settings.MAIL_FROM_ADDRESS
-        from_name = from_name or settings.MAIL_FROM_NAME
-
-        message["From"] = f"{from_name} <{from_email}>"
-        message["To"] = ", ".join(to_emails)
-
-        part = MIMEText(html_content, "html")
-        message.attach(part)
-
-        try:
-            with smtplib.SMTP(settings.MAIL_HOST, settings.MAIL_PORT) as server:
-                # If TLS encryption is needed
-                if (
-                    hasattr(settings, "MAIL_ENCRYPTION")
-                    and settings.MAIL_ENCRYPTION.lower() == "tls"
-                ):
-                    server.starttls()
-
-                # Development SMTP sinks may not require authentication.
-                if settings.MAIL_USERNAME and settings.MAIL_PASSWORD:
-                    server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
-
-                server.sendmail(from_email, to_emails, message.as_string())
-
-            logger.info("Email sent successfully")
-            return True
-        except Exception:
-            logger.error("Email sending failed")
-            raise
+    def __init__(self, adapter: AeternaEmailAdapter | None = None):
+        self.adapter = adapter if adapter is not None else get_aeterna_email_adapter()
 
     async def send(
         self,
-        to_emails: Union[str, List[str]],
+        to_emails: str | list[str],
         subject: str,
         html_content: str,
-        from_email: Optional[str] = None,
-        from_name: Optional[str] = None,
+        from_email: str | None = None,
+        from_name: str | None = None,
     ) -> bool:
-        """
-        Send email asynchronously
-        """
-        if isinstance(to_emails, str):
-            to_emails = [to_emails]
+        """Submit one recipient without sender overrides or fallback delivery."""
 
+        if not html_content or not html_content.strip():
+            logger.error("Email HTML content is empty, sending failed")
+            return False
+        if from_email is not None or from_name is not None:
+            raise EmailDeliveryFailure(
+                "email-sender-override-forbidden", retryable=False
+            )
+        recipients = [to_emails] if isinstance(to_emails, str) else to_emails
+        if len(recipients) != 1:
+            raise EmailDeliveryFailure("email-recipient-count-invalid", retryable=False)
+        envelope = AeternaEmailEnvelope(
+            recipient=recipients[0],
+            subject=subject,
+            text_body=_EmailTextRenderer().render(html_content),
+            html_body=html_content,
+            track_in_outbox=False,
+        )
         try:
-            # Ensure html_content is not empty
-            if not html_content or len(html_content.strip()) == 0:
-                logger.error("Email HTML content is empty, sending failed")
-                return False
-
-            # Send email using FastMail (asynchronous method)
-            message = MessageSchema(
-                subject=subject,
-                recipients=to_emails,
-                body=html_content,  # Try using body parameter
-                subtype="html",
-            )
-
-            await fastmail.send_message(message)
-            logger.info("Email sent asynchronously")
-            return True
+            # The random correlation key contains no address, code, or body. It is
+            # not a provider idempotency token; this service never replays a send.
+            await self.adapter.send(envelope, str(uuid.uuid4()))
+        except EmailDeliveryFailure:
+            logger.error("Email provider delivery failed")
+            raise
         except Exception:
-            logger.warning("FastMail sending failed; trying synchronous delivery")
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(
-                self.thread_pool_service.get_executor(),
-                self._send_sync,
-                to_emails,
-                subject,
-                html_content,
-                from_email,
-                from_name,
-            )
+            logger.error("Email provider outcome is ambiguous")
+            raise EmailDeliveryFailure(
+                "provider-failure-ambiguous", retryable=False, ambiguous=True
+            ) from None
+        logger.info("Email accepted by provider")
+        return True
 
     async def send_with_template(
         self,
-        to_emails: Union[str, List[str]],
+        to_emails: str | list[str],
         template_name: str,
-        template_params: Dict[str, Any],
+        template_params: dict[str, Any],
         subject: str,
-        from_email: Optional[str] = None,
-        from_name: Optional[str] = None,
+        from_email: str | None = None,
+        from_name: str | None = None,
     ) -> bool:
-        """
-        Send email using template
+        """Render an existing server-owned template before provider submission."""
 
-        Parameters:
-        -----------
-        to_emails: Recipient list or single recipient
-        template_name: Template name (e.g., 'auth/verification.html')
-        template_params: Template parameters
-        subject: Email subject
-        from_email: Sender email, defaults to configured value
-        from_name: Sender name, defaults to configured value
-        """
         try:
-            # Add default parameters
-            params = {**template_params}
-
-            # Render template
             template = jinja_env.get_template(template_name)
-            html_content = template.render(**params)
-            # Send email
+            html_content = template.render(**template_params)
             return await self.send(
                 to_emails=to_emails,
                 subject=subject,
@@ -193,7 +142,6 @@ class EmailService:
             logger.error("Email template delivery failed")
             raise
 
-    # Dedicated methods for convenience
     async def send_verification_email(
         self,
         email: str,
@@ -201,9 +149,8 @@ class EmailService:
         verification_code: str,
         expires_in_minutes: int = 5,
     ) -> bool:
-        """
-        Send account verification email
-        """
+        """Send the existing verification copy with its server-side lifetime."""
+
         return await self.send_with_template(
             to_emails=email,
             template_name="auth/verification.html",
@@ -217,5 +164,6 @@ class EmailService:
 
 
 def get_email_service() -> EmailService:
-    """Get EmailService instance (dependency injection)"""
-    return EmailService()
+    """Assemble account mail with the same adapter as durable Outbox delivery."""
+
+    return EmailService(adapter=get_aeterna_email_adapter())

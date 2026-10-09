@@ -7,6 +7,10 @@
 - Provider integration: AWS SES selected on 2026-09-27
 - Launch approval: Not granted; production delivery remains fail closed
 
+The status and launch statement above record the original I12 decision.
+The 2026-10-09 implementation clarification below describes the later unified
+application transport without granting deployment or live-send approval.
+
 ## Context
 
 I11 commits provider-neutral notification intent with policy state but does not
@@ -114,3 +118,49 @@ field-encryption boundary.
 Rejected because a package, configuration field, or existing account does not
 approve a new third-party personal-data recipient or an unsolicited-message
 policy interpretation.
+
+## Implementation clarification (2026-10-09)
+
+All application mail now resolves through the same constrained provider factory.
+Owner mailbox challenges and device-binding security notices retain
+`EmailAeternaAccountNotifier` and `EmailService` for their existing rendering
+and immediate result contract. Retained generic registration, verification
+resend, and password-reset service calls use that facade too; their legacy
+client routes remain unregistered. Contact invitations/tests, policy reminders,
+warnings/releases, recovery links, and claim OTPs continue through the durable
+email Outbox and `AeternaEmailDeliveryService`, using the same adapter.
+Later recovery behavior remains governed by ADR 0004; the historical I12 scope
+above is unchanged.
+
+Production and preview require `AETERNA_EMAIL_PRODUCTION_ENABLED=true`,
+`AETERNA_EMAIL_PROVIDER=aws-ses`, and complete validated SES Region, sender,
+configuration-set, and SNS topic controls. Only explicit development selects
+the local SMTP sink adapter; unknown environments fail closed. The independent
+FastMail/synchronous SMTP fallback and unused Brevo sending module are removed.
+Existing templates, lifetimes, consent/recovery conditions, failure semantics,
+redaction, and desktop protocol remain unchanged.
+
+The SES SDK still makes one total attempt. An ambiguous outcome cannot trigger
+a fallback or automatic replay; durable Outbox authorization and reconciliation
+remain authoritative. Immediate facade sends preserve their existing failure
+contract and do not become Outbox events or warning proof.
+
+Immediate facade envelopes use an internal delivery-tracking flag and receive
+the adapter-owned `aeterna-delivery=immediate` SES tag. Production and preview
+callbacks authenticate the existing signature and exact topic before
+acknowledging that exact marker without business-state changes. Missing or
+unknown markers retain the original Outbox lookup and rejection behavior;
+this does not add immediate-mail delivery tracking or bounce suppression.
+AWS client-construction failures reach the send boundary as the redacted
+`aws-ses-configuration-error`, preserving challenge failure status and
+best-effort security notices.
+
+AWS `ProductionAccessEnabled` is independent of the project enable flag.
+A pending AWS production-access request still permits sandbox delivery to
+identities verified in the sending Region within its quotas. Reported identity
+verification does not establish complete application configuration or authorize
+enablement. The local MVP transport repair authorizes code, local verification,
+and documentation only. See the
+[SES configuration and sandbox guide](../../deployment/aws-ses.md) for the
+placeholder controls, bounded operator checks, and separately authorized live
+acceptance workflow.
