@@ -29,6 +29,11 @@ fi
 if [[ "$*" == *'alembic upgrade head'* ]]; then
     [[ "${TEST_MIGRATION_FAILURE:-0}" == "0" ]] || exit 1
 fi
+if [[ "$*" == *'python -m scripts.diagnose_recovery_configuration'* ]]; then
+    printf '{"diagnostic_version":1,"status":"%s"}\n' \
+        "${TEST_DIAGNOSTIC_STATUS:-recovery_configured_not_probed}"
+    exit "${TEST_DIAGNOSTIC_EXIT:-0}"
+fi
 MOCK
 chmod 700 "$test_directory/bin/docker"
 
@@ -48,12 +53,16 @@ reset_case() {
     rm -f "$TEST_ENVELOPE_STATE"
     export TEST_DATABASE_EXISTS=0 TEST_ENVELOPE_EXISTS=0
     export TEST_BACKUP_FAILURE=0 TEST_MIGRATION_FAILURE=0
+    export TEST_DIAGNOSTIC_EXIT=0
+    export TEST_DIAGNOSTIC_STATUS=recovery_configured_not_probed
 }
 
 reset_case
 bash "$repository/deploy.sh" release "$revision" > "$test_directory/result.log" 2>&1
 awk '/ stop celery-beat/ { stop=NR } /pg_dump/ { backup=NR } /cp \/app\/identity-keys/ { envelope=NR } /alembic upgrade head/ { migration=NR } /--pull never/ { start=NR } END { exit !(stop && stop < backup && backup < envelope && envelope < migration && migration < start) }' "$TEST_COMMAND_LOG"
 awk '/identity-setup --region/ && /profile=aeterna-identity-provisioner directory=\/etc\/aeterna\/aws-identity-provisioner/ { found=1 } END { exit !found }' "$TEST_COMMAND_LOG"
+grep -q '"status":"recovery_configured_not_probed"' \
+    "$test_directory/release-status/$revision.json"
 
 reset_case
 export TEST_DATABASE_EXISTS=1 TEST_ENVELOPE_EXISTS=1
@@ -82,8 +91,15 @@ fi
 awk '/--pull never/ { exit 1 }' "$TEST_COMMAND_LOG"
 
 reset_case
+export TEST_ENVELOPE_EXISTS=1 TEST_DIAGNOSTIC_EXIT=1
+export TEST_DIAGNOSTIC_STATUS=recovery_provider_disabled
+bash "$repository/deploy.sh" release "$revision" > "$test_directory/result.log" 2>&1
+grep -q '"status":"recovery_provider_disabled"' \
+    "$test_directory/release-status/$revision.json"
+
+reset_case
 if bash "$repository/deploy.sh" release invalid > "$test_directory/result.log" 2>&1; then
     exit 1
 fi
 awk '/ volume inspect| up | stop | run / { exit 1 }' "$TEST_COMMAND_LOG"
-printf 'Six release safety checks passed.\n'
+printf 'Seven release safety checks passed.\n'

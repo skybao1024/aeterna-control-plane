@@ -119,3 +119,57 @@ I15 owns actual resource creation, least-privilege key/IAM policies, CloudTrail
 and alarms, deletion safeguards, backup/restore and outage drills, live KMS and
 SES acceptance, retention, and the production rollback plan. Until that gate
 passes, keep both recovery KMS and production email switches disabled.
+
+## Sanitized configuration diagnosis
+
+The operator-only `scripts/diagnose_recovery_configuration.py` checks the
+active backend container's named recovery environment controls and packaged
+Pydantic schemas. It does not open `.env` files, import application settings,
+call AWS or the database, inspect personal responses, or change configuration.
+It suppresses other logging during execution and prints one JSON object with
+fixed status labels, booleans and schema counts. No credential, ARN, mailbox,
+raw exception, identity envelope or recovery material is included.
+
+All four recovery controls must be explicitly present in the process environment
+before it classifies configuration. Compose `env_file` normally supplies them.
+Missing values cannot establish effective application settings because the
+application also supports `.env` fallback, which this diagnostic does not read.
+
+From the repository root, use the existing active Compose configuration:
+
+```bash
+docker compose exec -T backend python -m scripts.diagnose_recovery_configuration
+```
+
+To diagnose a deployed image that predates this script, copy only the reviewed
+script into a temporary container path and run it against that image's existing
+environment and schemas. Replace `<BACKEND_CONTAINER>` with the current backend
+container name; do not replace its environment or restart the application:
+
+```bash
+docker cp backend/scripts/diagnose_recovery_configuration.py <BACKEND_CONTAINER>:/tmp/aeterna-recovery-diagnostic.py
+docker exec -w /app <BACKEND_CONTAINER> python /tmp/aeterna-recovery-diagnostic.py
+```
+
+| Status | Meaning and next step |
+| --- | --- |
+| `configuration_controls_not_supplied` | One or more process controls are absent. The script cannot inspect application file fallback; presence flags/count identify the missing controls without reading `.env`. Do not infer that recovery is disabled. |
+| `recovery_provider_disabled` | Recovery generation is disabled in this container. Waiting or rebuilding the desktop cannot enable it; review the approved service setup with the operator. |
+| `recovery_configuration_invalid` | Provider, enablement, region or exact key ARN does not match the approved production configuration. Use the boolean checks to identify the mismatch without sharing its value. |
+| `recovery_configured_not_probed` | Configuration shape is valid. This does not establish AWS credentials, key state, IAM/key-policy permissions or KMS network availability. Continue with a separately authorized service acceptance check. |
+| `diagnostic_unavailable` | The diagnostic could not inspect configuration or schemas safely. Share only this output and the installed image/revision metadata. |
+| `invalid_arguments` | Invoke the script without arguments; it accepts no credentials, key values or AWS probe flags. |
+
+Exit code 0 means configuration is shaped correctly, not recovery readiness;
+code 1 reports missing controls, a disabled, invalid or unavailable result, and code 2 reports
+invalid arguments. Schema flags describe declarations in this image, not live
+route behavior or applied database migrations. A false `management_email_required`
+flag indicates that this image lacks the desktop's current required configuration
+field and needs a contract/version review. A false feature with fewer than three
+available schema modules may also indicate an older image.
+
+The existing `/api/v1/config/health` checks API, PostgreSQL and Redis only. A
+healthy response does not establish recovery KMS readiness. Do not run
+`docker compose config`, dump process environments or share raw production logs
+for this diagnosis. Do not regenerate identity material, enable recovery, add
+IAM permissions or deploy a release merely to make this check pass.

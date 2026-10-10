@@ -204,6 +204,24 @@ release_environment() {
     print_info "Applying migrations before starting the application..."
     compose run --rm --no-deps backend alembic upgrade head
     compose up -d --no-build --pull never --remove-orphans --wait --wait-timeout 300
+
+    local release_status_directory diagnostic_file diagnostic_tmp diagnostic_exit
+    release_status_directory="$(dirname "$AETERNA_BACKUP_DIRECTORY")/release-status"
+    diagnostic_file="$release_status_directory/$revision.json"
+    diagnostic_tmp="$diagnostic_file.tmp"
+    install -d -m 755 "$release_status_directory"
+    diagnostic_exit=0
+    compose exec -T backend python -m scripts.diagnose_recovery_configuration \
+        > "$diagnostic_tmp" || diagnostic_exit=$?
+    if [[ "$diagnostic_exit" != "0" && "$diagnostic_exit" != "1" ]] || \
+        ! awk 'NR > 1 || length($0) > 4096 { exit 1 } END { exit NR != 1 }' \
+            "$diagnostic_tmp"; then
+        rm -f "$diagnostic_tmp"
+        print_error "Sanitized recovery configuration diagnosis failed."
+        exit 1
+    fi
+    chmod 644 "$diagnostic_tmp"
+    mv -f "$diagnostic_tmp" "$diagnostic_file"
     print_info "Release is healthy. Backup retained at $backup_directory."
 }
 

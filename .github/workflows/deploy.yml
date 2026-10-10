@@ -169,6 +169,9 @@ jobs:
             release-bundle/release.tar.gz release-bundle/checksums.txt "$target:$incoming/"
           ssh "${ssh_options[@]}" "$target" \
             "sudo -n /usr/local/sbin/aeterna-release '$RELEASE_SHA'"
+          diagnostic_path="/srv/aeterna-control-plane/release-status/$RELEASE_SHA.json"
+          printf 'Sanitized recovery configuration: '
+          ssh "${ssh_options[@]}" "$target" "cat '$diagnostic_path'"
       - name: Verify public HTTPS endpoints
         run: |
           curl --fail --silent --show-error --max-time 30 \
