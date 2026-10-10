@@ -1,15 +1,14 @@
 export const recoveryClaimCopy = {
-  heading: 'Aeterna recovery claim',
-  introduction:
-    'This link is scoped to one local device and vault. Only the verified contact mailbox can authorize a claim after release. Vault content and the emergency recovery code stay on the local computer.',
-  start: 'Send mailbox code',
-  code: 'Contact mailbox code (8 digits)',
-  verify: 'Verify and prepare desktop handoff',
-  loading: 'Loading recovery link…',
-  sending: 'Processing recovery claim…',
-  otp: 'Check the contact mailbox for the separate code. The code expires after 10 minutes.',
-  handoff:
-    'Paste this short-lived handoff into Emergency recovery in the local Aeterna app for this device. It permits one server-factor read for five minutes. It contains no emergency recovery code or vault content. Do not send it to anyone else.',
-  label: 'Desktop claim handoff',
-  error: 'The claim could not proceed. The link or code may be invalid, expired, consumed, or not yet released. Check the release email and try again.',
+  language: 'en',
+  heading: 'Continue recovery in Aeterna',
+  introduction: 'Recovery takes place in the Aeterna app on the computer that holds the local vault. Have the vault and its recovery code ready before continuing.',
+  openApp: 'Open Aeterna on that computer and choose Emergency recovery.',
+  useLink: 'Copy the recovery link from the original email into the app. Use the link in the email, rather than this page’s address.',
+  verify:
+    'Verify the recovery contact’s mailbox in the app. The owner’s mailbox is not required. If system storage holds the recovery code, the app will use it; otherwise enter the offline code.',
+  update: 'Set a new password and keep the new recovery code as instructed. The app updates this vault’s protection before opening the recovered content.',
+  expiredLink:
+    'Mailbox verification codes expire after 10 minutes. Request another code in the app if needed. You can use the original email link again while this recovery remains authorized. Verification time limits do not delete the local vault or make recovery factors expire.',
+  privacy: 'Keep the email link and verification code private. This website does not collect recovery codes, passwords, or vault content.',
+  error: 'Open the personal recovery link from the email sent to the recovery contact. Then follow the steps in the local Aeterna app.',
 };

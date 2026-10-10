@@ -17,6 +17,7 @@ from app.exceptions.aeterna_protocol import AeternaProtocolException
 from app.models.account_policy import AccountPolicy
 from app.models.aeterna_identity import AeternaAccount, AeternaDevice
 from app.models.aeterna_notification import AeternaContact, AeternaEmailOutboxEvent
+from app.models.aeterna_recipient_recovery import AeternaRecipientRecoveryRotation
 from app.models.aeterna_recovery import (
     AeternaOwnerRecoveryRequest,
     AeternaRecoveryAudit,
@@ -25,9 +26,8 @@ from app.models.aeterna_recovery import (
     AeternaRecoveryGrant,
     AeternaRecoveryOtpChallenge,
     AeternaRecoveryRecord,
-    AeternaRecoveryRotation,
-    AeternaRecoveryRotationDevice,
 )
+from app.schemas.client.aeterna_recipient_recovery import RecipientRecoverySecretRequest
 from app.schemas.client.aeterna_recovery import (
     OwnerRecoveryActionRequest,
     OwnerRecoveryStartRequest,
@@ -39,6 +39,9 @@ from app.schemas.client.aeterna_recovery import (
     RecoveryRotationConfirmRequest,
     RecoveryRotationProvisionRequest,
     RecoverySecretRequest,
+)
+from app.services.client.aeterna_recipient_recovery import (
+    AeternaRecipientRecoveryService,
 )
 from app.services.client.aeterna_recovery import AeternaRecoveryService
 from app.services.common.aeterna_email_adapter import (
@@ -56,6 +59,8 @@ from app.services.common.aeterna_security import (
     derive_recovery_otp,
     encode_base64url,
     encrypt_email,
+    make_token,
+    otp_verifier,
 )
 from app.services.internal.aeterna_email_delivery import AeternaEmailDeliveryService
 
@@ -90,6 +95,19 @@ class FailingDecryptProvider:
 
     def decrypt_srs(self, ciphertext, key_arn, context):
         raise RecoveryKeyUnavailable("synthetic unavailable key")
+
+
+class CountingDecryptProvider:
+    def __init__(self, delegate):
+        self.delegate = delegate
+        self.decrypt_calls = 0
+
+    def generate_srs(self, context):
+        return self.delegate.generate_srs(context)
+
+    def decrypt_srs(self, ciphertext, key_arn, context):
+        self.decrypt_calls += 1
+        return self.delegate.decrypt_srs(ciphertext, key_arn, context)
 
 
 class CapturingEmailAdapter:
@@ -336,7 +354,7 @@ async def prepare_claim(
         claim_link_token=claim_link_token,
     )
     async with session_factory() as db:
-        challenge_data = await service.start_claim(db, start)
+        challenge_data = await service.start_recipient_claim(db, start)
     code = derive_recovery_otp(
         synthetic_keys(), uuid.UUID(challenge_data["challenge_id"])
     )
@@ -348,7 +366,7 @@ async def prepare_claim(
         code=code,
     )
     async with session_factory() as db:
-        return await service.verify_claim(db, verify)
+        return await service.verify_recipient_claim(db, verify)
 
 
 def secret_request(claim_data: dict, **changes) -> RecoverySecretRequest:
@@ -363,7 +381,203 @@ def secret_request(claim_data: dict, **changes) -> RecoverySecretRequest:
     )
 
 
-async def test_pre_release_paths_fail_and_full_claim_is_bound_and_single_use():
+def signed_secret_request(fixture, claim_data, **changes):
+    document = signed_document(
+        fixture,
+        domain="aeterna.recipient-recovery.secret.v1",
+        operation="recipient_recovery.secret",
+        members={
+            "wrapper_digest": claim_data["wrapper_digest"],
+            "rotation_id": str(uuid.uuid4()),
+            **changes,
+        },
+    )
+    document["claim_token"] = claim_data["claim_token"]
+    return document
+
+
+async def release_signed_secret(recovery, document):
+    recipient = AeternaRecipientRecoveryService(recovery_service=recovery)
+    async with get_session_local()() as db:
+        try:
+            return await recipient.release_secret(
+                db, RecipientRecoverySecretRequest.model_validate(document), document
+            )
+        except AeternaProtocolException:
+            await db.rollback()
+            raise
+
+
+async def test_preexisting_legacy_proofs_cannot_release_or_be_promoted():
+    now = datetime(2030, 1, 2, tzinfo=UTC)
+    provider = CountingDecryptProvider(recovery_provider())
+    service = AeternaRecoveryService(
+        provision_provider=lambda: provider,
+        claim_provider=lambda: provider,
+        identity_key_provider=synthetic_keys,
+        clock=MutableClock(now),
+    )
+    fixture = await create_fixture(now)
+    _, expected_srs = await provision_and_confirm(service, fixture)
+    await release_policy(fixture.account_id, now)
+    sessions = get_session_local()
+    async with sessions() as db:
+        await service.materialize_released_account(db, fixture.account_id)
+    legacy_challenge_id = uuid.uuid4()
+    legacy_claim_id = uuid.uuid4()
+    legacy_token, legacy_digest = make_token()
+    legacy_code = derive_recovery_otp(synthetic_keys(), legacy_challenge_id)
+    async with sessions.begin() as db:
+        grant = await db.scalar(
+            select(AeternaRecoveryGrant).where(
+                AeternaRecoveryGrant.account_id == fixture.account_id
+            )
+        )
+        link = await db.scalar(
+            select(AeternaRecoveryClaimLink).where(
+                AeternaRecoveryClaimLink.grant_id == grant.id
+            )
+        )
+        record = await db.get(AeternaRecoveryRecord, fixture.recovery_id)
+        grant_id, link_id = grant.id, link.id
+        link_token = derive_recovery_link_token(
+            synthetic_keys(), link.id, link.token_key_version
+        )
+        db.add(
+            AeternaRecoveryOtpChallenge(
+                id=legacy_challenge_id,
+                link_id=link.id,
+                otp_verifier=otp_verifier(
+                    synthetic_keys(), legacy_challenge_id, "recovery-claim", legacy_code
+                ),
+                otp_key_version=1,
+                scope="recovery.srs.read",
+                status="active",
+                expires_at=now + timedelta(minutes=10),
+                resend_after=now + timedelta(seconds=60),
+            )
+        )
+        db.add(
+            AeternaRecoveryClaimToken(
+                id=legacy_claim_id,
+                grant_id=grant.id,
+                account_id=fixture.account_id,
+                contact_id=fixture.contact_id,
+                recovery_id=fixture.recovery_id,
+                device_id=fixture.device_id,
+                vault_id=fixture.vault_id,
+                wrapper_digest=record.wrapper_digest,
+                token_digest=legacy_digest,
+                scope="recovery.srs.read",
+                status="active",
+                expires_at=now + timedelta(minutes=5),
+            )
+        )
+
+    async def authority_state():
+        async with sessions() as db:
+            grant = await db.get(AeternaRecoveryGrant, grant_id)
+            link = await db.get(AeternaRecoveryClaimLink, link_id)
+            otp = await db.get(AeternaRecoveryOtpChallenge, legacy_challenge_id)
+            token = await db.get(AeternaRecoveryClaimToken, legacy_claim_id)
+            counts = []
+            for model in (
+                AeternaEmailOutboxEvent,
+                AeternaRecoveryAudit,
+                AeternaRecoveryClaimToken,
+                AeternaRecipientRecoveryRotation,
+            ):
+                counts.append(
+                    await db.scalar(
+                        select(func.count(model.id)).where(
+                            model.account_id == fixture.account_id
+                        )
+                    )
+                )
+            return (
+                grant.state,
+                grant.claimed_at,
+                link.status,
+                link.consumed_at,
+                otp.status,
+                otp.attempt_count,
+                otp.verified_at,
+                token.status,
+                token.consumed_at,
+                tuple(counts),
+            )
+
+    start = RecoveryClaimStartRequest(
+        protocol_version=1, request_id=str(uuid.uuid4()), claim_link_token=link_token
+    )
+    verify = RecoveryClaimVerifyRequest(
+        protocol_version=1,
+        request_id=str(uuid.uuid4()),
+        challenge_id=str(legacy_challenge_id),
+        claim_link_token=link_token,
+        code=legacy_code,
+    )
+    authorization = {
+        "claim_token": legacy_token,
+        "device_id": str(fixture.device_id),
+        "recovery_id": str(fixture.recovery_id),
+        "vault_id": str(fixture.vault_id),
+        "wrapper_digest": encode_base64url(bytes([0x66]) * 32),
+    }
+    before = await authority_state()
+    for operation, payload in (
+        ("start_claim", start),
+        ("verify_claim", verify),
+        ("release_secret", secret_request(authorization)),
+    ):
+        for _retry in range(2):
+            async with sessions() as db:
+                with pytest.raises(AeternaProtocolException) as denied:
+                    await getattr(service, operation)(db, payload)
+            assert denied.value.code == "recovery.claim_unavailable"
+            assert await authority_state() == before
+    async with sessions() as db:
+        with pytest.raises(AeternaProtocolException) as wrong_scope:
+            await service.verify_recipient_claim(db, verify)
+    assert wrong_scope.value.code == "recovery.otp_invalid"
+    with pytest.raises(AeternaProtocolException) as token_scope:
+        await release_signed_secret(
+            service, signed_secret_request(fixture, authorization)
+        )
+    assert token_scope.value.code == "recovery.claim_unavailable"
+    assert provider.decrypt_calls == 0
+    assert await authority_state() == before
+
+    async with sessions() as db:
+        challenge = await service.start_recipient_claim(db, start)
+    async with sessions() as db:
+        authorized = await service.verify_recipient_claim(
+            db,
+            RecoveryClaimVerifyRequest(
+                protocol_version=1,
+                request_id=str(uuid.uuid4()),
+                challenge_id=challenge["challenge_id"],
+                claim_link_token=link_token,
+                code=derive_recovery_otp(
+                    synthetic_keys(), uuid.UUID(challenge["challenge_id"])
+                ),
+            ),
+        )
+    released = await release_signed_secret(
+        service, signed_secret_request(fixture, authorized)
+    )
+    assert decode_base64url(released["srs"]) == expected_srs
+    assert provider.decrypt_calls == 1
+    async with sessions() as db:
+        assert (await db.get(AeternaRecoveryGrant, grant_id)).state == "available"
+        assert (
+            await db.get(AeternaRecoveryClaimToken, legacy_claim_id)
+        ).status == "active"
+        old_otp = await db.get(AeternaRecoveryOtpChallenge, legacy_challenge_id)
+        assert old_otp.status == "active" and old_otp.attempt_count == 0
+
+
+async def test_pre_release_paths_fail_and_full_claim_is_signed_and_reservation_bound():
     now = datetime(2030, 1, 2, 3, 4, 5, tzinfo=UTC)
     provider = recovery_provider()
     service = AeternaRecoveryService(
@@ -384,12 +598,11 @@ async def test_pre_release_paths_fail_and_full_claim_is_bound_and_single_use():
         assert await service.materialize_released_account(db, fixture.account_id) == []
 
     claim_data = await prepare_claim(service, fixture, now)
-    wrong_binding = secret_request(
-        claim_data, vault_id="00000000-0000-4000-8000-000000000099"
+    wrong_binding = signed_secret_request(
+        fixture, claim_data, vault_id="00000000-0000-4000-8000-000000000099"
     )
-    async with session_factory() as db:
-        with pytest.raises(AeternaProtocolException) as raised:
-            await service.release_secret(db, wrong_binding)
+    with pytest.raises(AeternaProtocolException) as raised:
+        await release_signed_secret(service, wrong_binding)
     assert raised.value.code == "recovery.claim_unavailable"
     async with session_factory() as db:
         token = await db.scalar(
@@ -399,14 +612,13 @@ async def test_pre_release_paths_fail_and_full_claim_is_bound_and_single_use():
         )
         assert token.status == "active"
 
-    request = secret_request(claim_data)
-    async with session_factory() as db:
-        released = await service.release_secret(db, request)
+    request = signed_secret_request(fixture, claim_data)
+    released = await release_signed_secret(service, request)
     assert decode_base64url(released["srs"]) == expected_srs
-    async with session_factory() as db:
-        with pytest.raises(AeternaProtocolException) as raised:
-            await service.release_secret(db, request)
-    assert raised.value.code == "recovery.claim_unavailable"
+    assert await release_signed_secret(service, request) == released
+    with pytest.raises(AeternaProtocolException) as raised:
+        await release_signed_secret(service, signed_secret_request(fixture, claim_data))
+    assert raised.value.code == "recovery.recipient_rotation_in_progress"
     async with session_factory() as db:
         record = await db.get(AeternaRecoveryRecord, fixture.recovery_id)
         grant = await db.scalar(
@@ -422,7 +634,7 @@ async def test_pre_release_paths_fail_and_full_claim_is_bound_and_single_use():
             )
         )
         assert expected_srs not in record.encrypted_srs
-        assert grant.state == "claimed"
+        assert grant.state == "available"
         assert {
             "recovery-claim-link",
             "recovery-otp",
@@ -553,7 +765,7 @@ async def test_claim_link_and_otp_are_rendered_only_at_authorized_delivery():
         claim_link_token=claim_link_token,
     )
     async with session_factory() as db:
-        challenge_data = await service.start_claim(db, start)
+        challenge_data = await service.start_recipient_claim(db, start)
     challenge_id = uuid.UUID(challenge_data["challenge_id"])
     async with session_factory() as db:
         otp_event = await db.scalar(
@@ -568,7 +780,7 @@ async def test_claim_link_and_otp_are_rendered_only_at_authorized_delivery():
     assert expected_code in adapter.envelopes[1].text_body
 
 
-async def test_claim_resend_and_expired_link_replacement_are_bounded():
+async def test_recipient_resend_is_bounded_and_original_link_survives_delay():
     now = datetime(2030, 2, 4, tzinfo=UTC)
     clock = MutableClock(now)
     provider = recovery_provider()
@@ -599,14 +811,14 @@ async def test_claim_resend_and_expired_link_replacement_are_bounded():
         claim_link_token=original_token,
     )
     async with session_factory() as db:
-        first = await service.start_claim(db, request)
+        first = await service.start_recipient_claim(db, request)
     async with session_factory() as db:
-        unchanged = await service.start_claim(db, request)
+        unchanged = await service.start_recipient_claim(db, request)
     assert unchanged["challenge_id"] == first["challenge_id"]
 
     clock.current = now + timedelta(seconds=61)
     async with session_factory() as db:
-        resent = await service.start_claim(db, request)
+        resent = await service.start_recipient_claim(db, request)
     assert resent["challenge_id"] != first["challenge_id"]
     async with session_factory() as db:
         first_challenge = await db.get(
@@ -615,9 +827,9 @@ async def test_claim_resend_and_expired_link_replacement_are_bounded():
     assert first_challenge.status == "expired"
 
     clock.current = now + timedelta(hours=24, seconds=1)
-    for expected_link_count in (2, 3, 4):
+    for _attempt in range(3):
         async with session_factory() as db:
-            neutral = await service.start_claim(db, request)
+            neutral = await service.start_recipient_claim(db, request)
         assert neutral["challenge_id"] not in {
             first["challenge_id"],
             resent["challenge_id"],
@@ -628,17 +840,17 @@ async def test_claim_resend_and_expired_link_replacement_are_bounded():
                 .join(AeternaRecoveryGrant)
                 .where(AeternaRecoveryGrant.account_id == fixture.account_id)
             )
-        assert link_count == expected_link_count
+        assert link_count == 1
         clock.current += timedelta(seconds=61)
     async with session_factory() as db:
-        await service.start_claim(db, request)
+        await service.start_recipient_claim(db, request)
     async with session_factory() as db:
         link_count = await db.scalar(
             select(func.count(AeternaRecoveryClaimLink.id))
             .join(AeternaRecoveryGrant)
             .where(AeternaRecoveryGrant.account_id == fixture.account_id)
         )
-    assert link_count == 4
+    assert link_count == 1
 
 
 async def test_kms_failure_rolls_back_and_concurrent_release_has_one_winner():
@@ -653,7 +865,7 @@ async def test_kms_failure_rolls_back_and_concurrent_release_has_one_winner():
     fixture = await create_fixture(now)
     await provision_and_confirm(service, fixture)
     claim_data = await prepare_claim(service, fixture, now)
-    request = secret_request(claim_data)
+    request = signed_secret_request(fixture, claim_data)
     failing = AeternaRecoveryService(
         provision_provider=lambda: provider,
         claim_provider=lambda: FailingDecryptProvider(provider),
@@ -661,9 +873,8 @@ async def test_kms_failure_rolls_back_and_concurrent_release_has_one_winner():
         clock=MutableClock(now),
     )
     session_factory = get_session_local()
-    async with session_factory() as db:
-        with pytest.raises(AeternaProtocolException) as raised:
-            await failing.release_secret(db, request)
+    with pytest.raises(AeternaProtocolException) as raised:
+        await release_signed_secret(failing, request)
     assert raised.value.code == "recovery.material_unavailable"
     async with session_factory() as db:
         token = await db.scalar(
@@ -680,15 +891,16 @@ async def test_kms_failure_rolls_back_and_concurrent_release_has_one_winner():
         assert grant.state == "available"
 
     async def release_once():
-        async with session_factory() as db:
-            try:
-                return await service.release_secret(db, request)
-            except AeternaProtocolException as exc:
-                return exc.code
+        try:
+            return await release_signed_secret(
+                service, signed_secret_request(fixture, claim_data)
+            )
+        except AeternaProtocolException as exc:
+            return exc.code
 
     outcomes = await asyncio.gather(release_once(), release_once())
     assert sum(isinstance(outcome, dict) for outcome in outcomes) == 1
-    assert outcomes.count("recovery.claim_unavailable") == 1
+    assert outcomes.count("recovery.recipient_rotation_in_progress") == 1
 
 
 def owner_start_document(fixture: RecoveryFixture) -> dict:

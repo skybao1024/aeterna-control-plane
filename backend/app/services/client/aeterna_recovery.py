@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import base64
 import secrets
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, NoReturn
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +16,7 @@ from app.exceptions.aeterna_protocol import AeternaProtocolException
 from app.models.account_policy import AccountPolicy, AccountPolicyState
 from app.models.aeterna_identity import AeternaAccount, AeternaDevice
 from app.models.aeterna_notification import AeternaContact, AeternaEmailOutboxEvent
+from app.models.aeterna_recipient_recovery import AeternaRecipientRecoveryRotation
 from app.models.aeterna_recovery import (
     AeternaOwnerRecoveryRequest,
     AeternaRecoveryAudit,
@@ -69,6 +69,7 @@ CLAIM_LINK_LIFETIME = timedelta(hours=24)
 OTP_LIFETIME = timedelta(minutes=10)
 OTP_RESEND = timedelta(seconds=60)
 CLAIM_TOKEN_LIFETIME = timedelta(minutes=5)
+RECIPIENT_CLAIM_SCOPE = "recovery.recipient.rotate"
 MAX_OTP_ATTEMPTS = 5
 RECENT_HEARTBEAT = timedelta(minutes=15)
 OWNER_RECOVERY_COOLDOWN = timedelta(hours=24)
@@ -118,6 +119,7 @@ class AeternaRecoveryService:
         account, policy, device = await self._authorize_device(
             db, account_id, device_id, request_id, document["signed"], payload.signature
         )
+        await self._reject_recipient_record_id(db, recovery_id, request_id)
         digest = request_digest(document)
         replay = await db.scalar(
             select(AeternaRecoveryRecord).where(
@@ -485,6 +487,22 @@ class AeternaRecoveryService:
     async def start_claim(
         self, db: AsyncSession, payload: RecoveryClaimStartRequest
     ) -> dict[str, Any]:
+        self.reject_legacy_claim(payload.request_id)
+
+    async def start_recipient_claim(
+        self, db: AsyncSession, payload: RecoveryClaimStartRequest
+    ) -> dict[str, Any]:
+        return await self._start_claim(db, payload, scope=RECIPIENT_CLAIM_SCOPE)
+
+    def reject_legacy_claim(self, request_id: str | None = None) -> NoReturn:
+        """Retired unsigned recovery must not query, decrypt, or consume authority."""
+        raise AeternaProtocolException(400, "recovery.claim_unavailable", request_id)
+
+    async def _start_claim(
+        self, db: AsyncSession, payload: RecoveryClaimStartRequest, *, scope: str
+    ) -> dict[str, Any]:
+        if scope != RECIPIENT_CLAIM_SCOPE:
+            self.reject_legacy_claim(payload.request_id)
         try:
             digest = token_digest(payload.claim_link_token)
         except ValueError:
@@ -551,16 +569,38 @@ class AeternaRecoveryService:
             .with_for_update()
         )
         now = self._now()
+        completed_recipient = (
+            await db.scalar(
+                select(AeternaRecipientRecoveryRotation.id).where(
+                    AeternaRecipientRecoveryRotation.source_recovery_id == record.id,
+                    AeternaRecipientRecoveryRotation.grant_id == grant.id,
+                    AeternaRecipientRecoveryRotation.contact_id == contact.id,
+                    AeternaRecipientRecoveryRotation.state == "complete",
+                )
+            )
+            if scope == RECIPIENT_CLAIM_SCOPE
+            and record is not None
+            and grant is not None
+            and contact is not None
+            else None
+        )
         authority_available = (
             account is not None
+            and account.is_active
             and policy is not None
             and grant is not None
             and contact is not None
             and record is not None
             and link is not None
             and policy.state == AccountPolicyState.RELEASED.value
-            and grant.state == "available"
-            and record.state == "sealed"
+            and (
+                (grant.state == "available" and record.state == "sealed")
+                or (
+                    completed_recipient is not None
+                    and grant.state == "revoked"
+                    and record.state == "revoked"
+                )
+            )
             and contact.consent_status == "ACCEPTED"
             and contact.verified_at is not None
             and contact.deleted_at is None
@@ -568,28 +608,31 @@ class AeternaRecoveryService:
         if (
             authority_available
             and link is not None
-            and link.status in {"active", "expired"}
-            and link.expires_at <= now
+            and (
+                (
+                    scope == RECIPIENT_CLAIM_SCOPE
+                    and link.status in {"active", "expired", "consumed"}
+                )
+                or (
+                    link.status == "revoked"
+                    and completed_recipient is not None
+                    and scope == RECIPIENT_CLAIM_SCOPE
+                )
+                or (link.status == "consumed" and link.expires_at > now)
+            )
         ):
-            if link.status == "active":
-                link.status = "expired"
-                link.consumed_at = now
-                link.updated_at = now
-            await self._issue_replacement_link(db, grant, now)
-            await db.commit()
-            return self._neutral_challenge()
-        if (
-            not authority_available
-            or link is None
-            or link.status != "active"
-            or link.expires_at <= now
-        ):
+            # A mailbox verification can resume a durable rotation after token loss.
+            link.status = "active"
+            link.consumed_at = None
+            link.updated_at = now
+        if not authority_available or link is None or link.status != "active":
             return await self._dummy_challenge(db)
         challenge = await db.scalar(
             select(AeternaRecoveryOtpChallenge)
             .where(
                 AeternaRecoveryOtpChallenge.link_id == link.id,
                 AeternaRecoveryOtpChallenge.status == "active",
+                AeternaRecoveryOtpChallenge.scope == scope,
             )
             .order_by(AeternaRecoveryOtpChallenge.created_at.desc())
             .limit(1)
@@ -608,8 +651,11 @@ class AeternaRecoveryService:
             challenge = AeternaRecoveryOtpChallenge(
                 id=challenge_id,
                 link_id=link.id,
-                otp_verifier=otp_verifier(keys, challenge_id, "recovery-claim", code),
+                otp_verifier=otp_verifier(
+                    keys, challenge_id, self._claim_otp_purpose(scope), code
+                ),
                 otp_key_version=keys.version,
+                scope=scope,
                 attempt_count=0,
                 status="active",
                 expires_at=now + OTP_LIFETIME,
@@ -648,6 +694,23 @@ class AeternaRecoveryService:
     async def verify_claim(
         self, db: AsyncSession, payload: RecoveryClaimVerifyRequest
     ) -> dict[str, Any]:
+        self.reject_legacy_claim(payload.request_id)
+
+    async def verify_recipient_claim(
+        self, db: AsyncSession, payload: RecoveryClaimVerifyRequest
+    ) -> dict[str, Any]:
+        return await self._verify_claim(db, payload, scope=RECIPIENT_CLAIM_SCOPE)
+
+    def _claim_otp_purpose(self, scope: str) -> str:
+        if scope != RECIPIENT_CLAIM_SCOPE:
+            self.reject_legacy_claim()
+        return "recipient-recovery-claim"
+
+    async def _verify_claim(
+        self, db: AsyncSession, payload: RecoveryClaimVerifyRequest, *, scope: str
+    ) -> dict[str, Any]:
+        if scope != RECIPIENT_CLAIM_SCOPE:
+            self.reject_legacy_claim(payload.request_id)
         relation = (
             await db.execute(
                 select(
@@ -717,7 +780,7 @@ class AeternaRecoveryService:
             .where(AeternaRecoveryOtpChallenge.id == relation.challenge_id)
             .with_for_update()
         )
-        if challenge is None:
+        if challenge is None or challenge.scope != RECIPIENT_CLAIM_SCOPE:
             raise AeternaProtocolException(
                 400, "recovery.otp_invalid", payload.request_id
             )
@@ -731,9 +794,25 @@ class AeternaRecoveryService:
                 )
             except ValueError:
                 valid_link = False
+        completed_recipient = (
+            await db.scalar(
+                select(AeternaRecipientRecoveryRotation.id).where(
+                    AeternaRecipientRecoveryRotation.source_recovery_id == record.id,
+                    AeternaRecipientRecoveryRotation.grant_id == grant.id,
+                    AeternaRecipientRecoveryRotation.contact_id == contact.id,
+                    AeternaRecipientRecoveryRotation.state == "complete",
+                )
+            )
+            if scope == "recovery.recipient.rotate"
+            and record is not None
+            and grant is not None
+            and contact is not None
+            else None
+        )
         valid = (
             valid_link
             and account is not None
+            and account.is_active
             and grant is not None
             and record is not None
             and policy is not None
@@ -741,21 +820,28 @@ class AeternaRecoveryService:
             and challenge is not None
             and link is not None
             and policy.state == AccountPolicyState.RELEASED.value
-            and grant.state == "available"
-            and record.state == "sealed"
+            and (
+                (grant.state == "available" and record.state == "sealed")
+                or (
+                    completed_recipient is not None
+                    and grant.state == "revoked"
+                    and record.state == "revoked"
+                )
+            )
             and record.wrapper_digest is not None
             and contact.consent_status == "ACCEPTED"
             and contact.verified_at is not None
             and contact.deleted_at is None
             and link.status == "active"
-            and link.expires_at > now
+            and (scope == RECIPIENT_CLAIM_SCOPE or link.expires_at > now)
             and challenge.status == "active"
+            and challenge.scope == scope
             and challenge.expires_at > now
             and challenge.attempt_count < MAX_OTP_ATTEMPTS
             and verify_otp(
                 keys,
                 challenge.id,
-                "recovery-claim",
+                self._claim_otp_purpose(scope),
                 payload.code,
                 challenge.otp_verifier,
             )
@@ -793,7 +879,7 @@ class AeternaRecoveryService:
             vault_id=record.vault_id,
             wrapper_digest=record.wrapper_digest,
             token_digest=claim_digest,
-            scope="recovery.srs.read",
+            scope=scope,
             status="active",
             expires_at=now + CLAIM_TOKEN_LIFETIME,
         )
@@ -822,175 +908,7 @@ class AeternaRecoveryService:
     async def release_secret(
         self, db: AsyncSession, payload: RecoverySecretRequest
     ) -> dict[str, Any]:
-        try:
-            digest = token_digest(payload.claim_token)
-        except ValueError:
-            raise AeternaProtocolException(
-                400, "recovery.claim_unavailable", payload.request_id
-            ) from None
-        relation = (
-            await db.execute(
-                select(
-                    AeternaRecoveryClaimToken.id,
-                    AeternaRecoveryClaimToken.account_id,
-                    AeternaRecoveryClaimToken.contact_id,
-                    AeternaRecoveryClaimToken.recovery_id,
-                    AeternaRecoveryClaimToken.grant_id,
-                ).where(AeternaRecoveryClaimToken.token_digest == digest)
-            )
-        ).one_or_none()
-        if relation is None:
-            raise AeternaProtocolException(
-                400, "recovery.claim_unavailable", payload.request_id
-            )
-        account = await db.scalar(
-            select(AeternaAccount)
-            .where(AeternaAccount.id == relation.account_id)
-            .with_for_update()
-        )
-        record = await db.scalar(
-            select(AeternaRecoveryRecord)
-            .where(AeternaRecoveryRecord.id == relation.recovery_id)
-            .with_for_update()
-        )
-        policy = (
-            await db.scalar(
-                select(AccountPolicy)
-                .where(
-                    AccountPolicy.account_id == relation.account_id,
-                    AccountPolicy.epoch == record.policy_epoch,
-                )
-                .with_for_update()
-            )
-            if record is not None
-            else None
-        )
-        grant = await db.scalar(
-            select(AeternaRecoveryGrant)
-            .where(AeternaRecoveryGrant.id == relation.grant_id)
-            .with_for_update()
-        )
-        contact = await db.scalar(
-            select(AeternaContact)
-            .where(AeternaContact.id == relation.contact_id)
-            .with_for_update()
-        )
-        claim = await db.scalar(
-            select(AeternaRecoveryClaimToken)
-            .where(AeternaRecoveryClaimToken.id == relation.id)
-            .with_for_update()
-        )
-        now = self._now()
-        try:
-            wrapper_digest = decode_base64url(payload.wrapper_digest, 32)
-        except ValueError:
-            wrapper_digest = b""
-        if (
-            account is None
-            or policy is None
-            or record is None
-            or grant is None
-            or contact is None
-            or claim is None
-            or policy.state != AccountPolicyState.RELEASED.value
-            or record.state != "sealed"
-            or record.wrapper_digest is None
-            or grant.state != "available"
-            or contact.consent_status != "ACCEPTED"
-            or contact.verified_at is None
-            or contact.deleted_at is not None
-            or claim.status != "active"
-            or claim.expires_at <= now
-            or claim.scope != "recovery.srs.read"
-            or str(record.id) != payload.recovery_id
-            or str(record.device_id) != payload.device_id
-            or str(record.vault_id) != payload.vault_id
-            or not secrets.compare_digest(record.wrapper_digest, wrapper_digest)
-            or not secrets.compare_digest(claim.wrapper_digest, wrapper_digest)
-        ):
-            raise AeternaProtocolException(
-                400, "recovery.claim_unavailable", payload.request_id
-            )
-        context = recovery_encryption_context(
-            environment=settings.ENV,
-            protocol_version=1,
-            account_id=record.account_id,
-            device_id=record.device_id,
-            vault_id=record.vault_id,
-            recovery_id=record.id,
-        )
-        try:
-            plaintext = self.claim_provider().decrypt_srs(
-                record.encrypted_srs, record.kms_key_arn, context
-            )
-        except RecoveryKeyUnavailable:
-            raise AeternaProtocolException(
-                503, "recovery.material_unavailable", payload.request_id
-            ) from None
-        try:
-            claim.status = "consumed"
-            claim.consumed_at = now
-            claim.updated_at = now
-            grant.state = "claimed"
-            grant.claimed_at = now
-            grant.updated_at = now
-            self._audit(
-                db,
-                record.account_id,
-                record.id,
-                grant.contact_id,
-                grant.id,
-                uuid.UUID(payload.request_id),
-                "secret.released",
-            )
-            db.add(
-                self._email_event(
-                    account_id=record.account_id,
-                    contact_id=None,
-                    event_type="recovery-claimed-owner",
-                    idempotency_key=f"recovery-claimed-owner:{grant.id}",
-                    now=now,
-                )
-            )
-            other_contacts = list(
-                (
-                    await db.scalars(
-                        select(AeternaContact).where(
-                            AeternaContact.account_id == record.account_id,
-                            AeternaContact.id != grant.contact_id,
-                            AeternaContact.consent_status == "ACCEPTED",
-                            AeternaContact.verified_at.is_not(None),
-                            AeternaContact.deleted_at.is_(None),
-                        )
-                    )
-                ).all()
-            )
-            for contact in other_contacts:
-                db.add(
-                    self._email_event(
-                        account_id=record.account_id,
-                        contact_id=contact.id,
-                        event_type="recovery-claimed-contact",
-                        idempotency_key=f"recovery-claimed-contact:{grant.id}:{contact.id}",
-                        now=now,
-                    )
-                )
-            await db.commit()
-            return {
-                "account_id": str(record.account_id),
-                "device_id": str(record.device_id),
-                "policy_epoch": record.policy_epoch,
-                "recovery_generation": record.recovery_generation,
-                "recovery_id": str(record.id),
-                "rekey_required": True,
-                "srs": base64.urlsafe_b64encode(bytes(plaintext))
-                .rstrip(b"=")
-                .decode("ascii"),
-                "vault_id": str(record.vault_id),
-                "wrapper_digest": encode_base64url(record.wrapper_digest),
-            }
-        finally:
-            plaintext[:] = b"\x00" * len(plaintext)
+        self.reject_legacy_claim(payload.request_id)
 
     async def start_owner_recovery(
         self,
@@ -1124,6 +1042,15 @@ class AeternaRecoveryService:
     async def verify_owner_recovery(
         self, db: AsyncSession, payload: OwnerRecoveryVerifyRequest
     ) -> dict[str, Any]:
+        visible = await db.get(
+            AeternaOwnerRecoveryRequest, uuid.UUID(payload.owner_recovery_id)
+        )
+        if visible is not None:
+            await db.scalar(
+                select(AeternaAccount)
+                .where(AeternaAccount.id == visible.account_id)
+                .with_for_update()
+            )
         request = await db.scalar(
             select(AeternaOwnerRecoveryRequest)
             .where(
@@ -1131,6 +1058,7 @@ class AeternaRecoveryService:
                 AeternaOwnerRecoveryRequest.challenge_id
                 == uuid.UUID(payload.challenge_id),
             )
+            .execution_options(populate_existing=True)
             .with_for_update()
         )
         if request is None:
@@ -1153,7 +1081,7 @@ class AeternaRecoveryService:
         )
         if not valid:
             request.attempt_count = min(MAX_OTP_ATTEMPTS, request.attempt_count + 1)
-            if request.challenge_expires_at <= now:
+            if request.state == "pending_email" and request.challenge_expires_at <= now:
                 request.state = "expired"
             request.updated_at = now
             await db.commit()
@@ -1477,6 +1405,7 @@ class AeternaRecoveryService:
 
         rotation_id = uuid.UUID(signed.rotation_id)
         recovery_id = uuid.UUID(signed.recovery_id)
+        await self._reject_recipient_record_id(db, recovery_id, signed.request_id)
         vault_id = uuid.UUID(signed.vault_id)
         owner_recovery_id = (
             uuid.UUID(signed.owner_recovery_id)
@@ -2048,6 +1977,19 @@ class AeternaRecoveryService:
             "target_policy_epoch": rotation.target_policy_epoch,
         }
 
+    async def _reject_recipient_record_id(
+        self, db: AsyncSession, recovery_id: uuid.UUID, request_id: str
+    ) -> None:
+        recipient = await db.scalar(
+            select(AeternaRecipientRecoveryRotation.id).where(
+                AeternaRecipientRecoveryRotation.target_recovery_id == recovery_id
+            )
+        )
+        if recipient is not None:
+            raise AeternaProtocolException(
+                409, "recovery.recipient_rotation_conflict", request_id
+            )
+
     async def _authorize_device(
         self,
         db: AsyncSession,
@@ -2098,57 +2040,6 @@ class AeternaRecoveryService:
             "expires_in_seconds": 600,
             "resend_after_seconds": 60,
         }
-
-    async def _issue_replacement_link(
-        self,
-        db: AsyncSession,
-        grant: AeternaRecoveryGrant,
-        now: datetime,
-    ) -> bool:
-        rolling_start = now - CLAIM_LINK_LIFETIME
-        issued_count = await db.scalar(
-            select(func.count(AeternaRecoveryClaimLink.id)).where(
-                AeternaRecoveryClaimLink.grant_id == grant.id,
-                AeternaRecoveryClaimLink.created_at >= rolling_start,
-            )
-        )
-        latest_issued_at = await db.scalar(
-            select(AeternaRecoveryClaimLink.created_at)
-            .where(AeternaRecoveryClaimLink.grant_id == grant.id)
-            .order_by(AeternaRecoveryClaimLink.created_at.desc())
-            .limit(1)
-        )
-        if (issued_count or 0) >= 3 or (
-            latest_issued_at is not None and latest_issued_at > now - OTP_RESEND
-        ):
-            return False
-
-        keys = self._identity_keys()
-        link_id = self.uuid_factory()
-        link_token = derive_recovery_link_token(keys, link_id)
-        link = AeternaRecoveryClaimLink(
-            id=link_id,
-            grant_id=grant.id,
-            token_digest=token_digest(link_token),
-            token_key_version=keys.version,
-            status="active",
-            expires_at=now + CLAIM_LINK_LIFETIME,
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(link)
-        await db.flush()
-        db.add(
-            self._email_event(
-                account_id=grant.account_id,
-                contact_id=grant.contact_id,
-                event_type="recovery-claim-link",
-                idempotency_key=f"recovery-claim-link:{grant.id}:{link.id}",
-                now=now,
-                recovery_link_id=link.id,
-            )
-        )
-        return True
 
     def _record_data(
         self, record: AeternaRecoveryRecord, updated_at: datetime

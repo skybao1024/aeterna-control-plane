@@ -164,7 +164,11 @@ def protocol_error_response(exc: AeternaProtocolException) -> JSONResponse:
     content: dict[str, Any] = {"protocol_version": PROTOCOL_VERSION, "error": error}
     if exc.request_id is not None:
         content["request_id"] = exc.request_id
-    return JSONResponse(status_code=exc.status_code, content=content)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=content,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def install_protocol_exception_handler(app: FastAPI) -> None:

@@ -1,0 +1,21 @@
+{
+  "protocol_version": 1,
+  "signed": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "canonicalization": "jcs-rfc8785",
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "protocol_version": 1,
+    "recovery_id": "00000000-0000-4000-8000-000000000041",
+    "request_id": "00000000-0000-4000-8000-000000000206",
+    "signature_version": 1,
+    "vault_id": "00000000-0000-4000-8000-000000000042",
+    "wrapper_digest": "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY",
+    "erc_commitment": "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVU",
+    "challenge_id": "00000000-0000-4000-8000-000000000211",
+    "challenge": "iIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIg",
+    "domain": "aeterna.recovery-custody.verify.v1",
+    "operation": "recovery_custody.verify",
+    "owner_recovery_id": "00000000-0000-4000-8000-000000000099"
+  },
+  "signature": "jOzWPEsLde-heE2jWHdQVUJYPY0fQwYjygFanQnNvD8UvVxeC93Pt3GexhbH3I8khk_1dwybgMsm7Z_tsPThAg"
+}

@@ -17,6 +17,10 @@
       },
       "then": { "required": ["binding_id"] },
       "else": { "not": { "required": ["binding_id"] } }
+    },
+    {
+      "if": { "required": ["account_id"] },
+      "then": { "properties": { "purpose": { "const": "device_binding" } } }
     }
   ],
   "properties": {
@@ -24,7 +28,8 @@
     "request_id": { "$ref": "common.schema.json#/$defs/uuid" },
     "email": { "$ref": "common.schema.json#/$defs/email" },
     "purpose": { "$ref": "common.schema.json#/$defs/challengePurpose" },
-    "binding_id": { "$ref": "common.schema.json#/$defs/uuid" }
+    "binding_id": { "$ref": "common.schema.json#/$defs/uuid" },
+    "account_id": { "$ref": "common.schema.json#/$defs/uuid" }
   },
   "required": ["protocol_version", "request_id", "email", "purpose"],
   "type": "object"

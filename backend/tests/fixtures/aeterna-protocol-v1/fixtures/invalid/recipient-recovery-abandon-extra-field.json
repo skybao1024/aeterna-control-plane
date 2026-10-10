@@ -1,0 +1,20 @@
+{
+  "protocol_version": 1,
+  "claim_token": "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE",
+  "signed": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "canonicalization": "jcs-rfc8785",
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "protocol_version": 1,
+    "recovery_id": "00000000-0000-4000-8000-000000000041",
+    "request_id": "00000000-0000-4000-8000-000000000204",
+    "signature_version": 1,
+    "vault_id": "00000000-0000-4000-8000-000000000042",
+    "wrapper_digest": "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY",
+    "rotation_id": "00000000-0000-4000-8000-000000000201",
+    "domain": "aeterna.recipient-recovery.abandon.v1",
+    "operation": "recipient_recovery.abandon",
+    "owner_recovery_id": "00000000-0000-4000-8000-000000000099"
+  },
+  "signature": "i6Hd-HIAa2Fdvpnfr0dUPCxcTKLZ7jAsM8cqzqsTMXAxDT2Aie0riM3XMW6aSpQRV41oOequmR_4lNdly_62CA"
+}

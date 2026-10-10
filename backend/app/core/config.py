@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     MAIL_USERNAME: str = ""
     MAIL_PASSWORD: str = ""
     MAIL_FROM_ADDRESS: str = "noreply@example.com"
-    MAIL_FROM_NAME: str = "Aeterna"
+    MAIL_FROM_NAME: str = "Aeterna Relay"
     MAIL_ENCRYPTION: str = "none"
 
     # Unified application email boundary. Credentials are intentionally not
@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     # Legacy compatibility fields; no application mail uses the Brevo provider.
     BREVO_API_KEY: str = ""
     BREVO_EMAIL_FROM: str = "noreply@example.com"
-    BREVO_EMAIL_FROM_NAME: str = "Aeterna"
+    BREVO_EMAIL_FROM_NAME: str = "Aeterna Relay"
 
     # Administrator email
     ADMIN_EMAIL: str = "admin@example.com"

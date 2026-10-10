@@ -2,7 +2,7 @@
 
 This directory is the public, machine-readable source of truth for Aeterna I09
 account/device binding, I10 signed heartbeat/device-status operations, I13
-delayed-recovery record and one-time claim operations, and I14 Owner recovery,
+delayed-recovery records and signed recipient claims, and I14 Owner recovery,
 recovery rotation, and post-compromise successor operations.
 Private database models, generated OpenAPI output, and desktop implementation
 types are consumers, not protocol authority.
@@ -63,8 +63,9 @@ An active bound device provisions, confirms, or abandons one recovery record
 under operation-specific signed domains. Provisioning returns a 32-byte SRS
 once; confirmation binds the local wrapper digest. A released, accepted, and
 verified contact then uses a fragment-carried claim-link token, an eight-digit
-mailbox challenge, a five-minute opaque claim token, and one exact secret-read
-operation. Secret-bearing responses require `Cache-Control: no-store`.
+mailbox challenge, a five-minute opaque recipient claim token, and exact
+device-signed retrieval and rotation operations. Secret-bearing responses
+require `Cache-Control: no-store`.
 
 An active, recently seen bound device starts Owner recovery under
 `aeterna.owner-recovery.start.v1`; release, cancellation, completion, and status
@@ -88,11 +89,80 @@ the RFC 8785 canonical manifest without `release_digest`. The private control
 plane vendors this exact package, pins the release tag and digest, and runs the
 same fixtures.
 
-The prepared release is `1.7.0` with tag name `protocol-v1.7.0`; preparing the
+The prepared release is `1.9.0` with tag name `protocol-v1.9.0`; preparing the
 manifest does not create or publish a Git tag. Signed field changes and security
 semantic changes require a new major/versioned operation as defined by ADR 0012. The prior major remains supported for at least 180 days after a successor
 reaches general availability, with at least 90 days' sunset notice unless a
 separate urgent security decision records a shorter migration.
+
+### Legacy contact retrieval retirement
+
+[ADR 0026](../../docs/adr/0026-signed-srs-retrieval-and-service-boundary.md)
+records the urgent security exception retiring unsigned contact retrieval
+without a compatibility grace period. `POST /recovery/claim/start`,
+`POST /recovery/claim/verify`, and
+`POST /recovery/{recovery_id}/release-secret` remain deprecated, error-only
+tombstones: valid legacy requests return HTTP 400 `recovery.claim_unavailable`
+with `Cache-Control: no-store`, without database, KMS or notification side
+effects. Previously issued `recovery.srs.read` tokens cannot be redeemed or
+converted into recipient authority. Historical legacy schemas and fixtures
+remain for contract evidence; no legacy success response is authorized.
+
+Original email entry links remain usable through the recipient claim endpoints
+when their exact grant or confirmation receipt is eligible. Recipient requests
+retain their existing signature documents, scopes and error codes. This change
+does not alter the encryption format or expire previously copied SRS.
+
+## Recipient successor operations
+
+ADR 0024 adds `/recovery/recipient/claim/start` and
+`/recovery/recipient/claim/verify`. The entry URL remains usable while its exact
+source entitlement is eligible, or for the same contact's outstanding exact
+confirmation. Email challenges expire after ten minutes and the distinct
+`recovery.recipient.rotate` grant expires after five minutes. Legacy claim
+credentials cannot authorize these operations.
+
+`/recovery/recipient/secret` and
+`/recovery/recipient/rotations/{rotation_id}/{provision,prepare,confirm,abandon}`
+require the original device signature and contact grant. Each signature domain
+is `aeterna.recipient-recovery.<operation>.v1`. The signed fields identify the
+exact historical source, rotation, and operation; target operations additionally
+bind the fresh recovery identity, ERC commitment and, for prepare/confirm, exact
+target wrapper digest. The outer claim token is not included in the signed
+document. Another contact or changed target cannot take over a live reservation.
+
+Provision retains encrypted successor SRS durably; prepare binds an immutable
+target receipt before native commit. Neither OTP nor grant expiry deletes staged
+material. Secret/provision redelivery and exact confirmation retries tolerate
+lost responses. Confirmation retires only the source entitlement and records
+the isolated `recipient_successor` binding with Vault-local generation one.
+Confirmation also records full account management for the verified recipient.
+Completed responses require `account_management_transferred: true` and the
+recipient's `management_email`; prepared responses require false and a null
+mailbox. The Owner account policy and shared ERC commitment do not change during
+Vault confirmation. Responses explicitly return `protection_active: false`.
+An authorized manager must explicitly configure the next policy epoch and
+complete normal recovery enrollment before future protection is ready.
+
+`/recovery/custody/challenge` uses
+`aeterna.recovery-custody.challenge.v1` to obtain a five-minute server-issued
+challenge bound to the exact signed account/device/Vault/recovery/wrapper.
+`/recovery/custody/verify` uses `aeterna.recovery-custody.verify.v1` and additionally
+signs `challenge_id`, the 32-byte `challenge`, and the ERC commitment. Only an
+exact current sealed Owner binding or confirmed recipient successor can match.
+The challenge is consumed atomically; an exact request retry returns its original
+result only before expiry, while changed or expired replay is rejected.
+Both operations are rate limited before database work and after device proof.
+They never receive raw ERC, MP or VDK, release SRS, or grant management authority.
+Local storage adoption follows successful verification and secure-store readback.
+
+An account challenge may include `account_id` only for `device_binding`.
+This targets a recovered account explicitly when the manager's mailbox also
+belongs to another account. Successful manager mailbox snapshots remain
+independent of that mailbox's original account. Signed configuration returns
+`owner_email` for operational reminders and `management_email` for the current
+device's preferred account verification. Mailbox values remain session-only in
+the desktop client.
 
 ## Privacy boundary
 
@@ -109,6 +179,6 @@ Template reads return one field per response under the 16 KiB bound. Field edits
 use a signed expected version, an account lock and atomic compare-and-set,
 preserve the counterpart, and return structural receipts only. All configuration
 responses require no-store. No personal values enter logs, audits or receipts. The only recovery secret field is the purpose-limited 32-byte `srs`
-in provisioning, Owner release, rotation provision, and released-secret success
+in provisioning, Owner release, rotation provision, and signed recipient secret
 responses; it is absent from
 requests, logs, error bodies, audit fixtures, and all other operations.

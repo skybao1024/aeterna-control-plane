@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.account_policy import AccountPolicyOutboxEvent
+from app.models.account_policy import AccountPolicy, AccountPolicyOutboxEvent
 from app.models.aeterna_identity import AeternaAccount
 from app.models.aeterna_notification import (
     AeternaContact,
@@ -28,7 +28,9 @@ from app.models.aeterna_notification import (
 from app.models.aeterna_recovery import (
     AeternaOwnerRecoveryRequest,
     AeternaRecoveryClaimLink,
+    AeternaRecoveryGrant,
     AeternaRecoveryOtpChallenge,
+    AeternaRecoveryRecord,
 )
 from app.services.common.aeterna_email_adapter import (
     AeternaEmailAdapter,
@@ -36,6 +38,10 @@ from app.services.common.aeterna_email_adapter import (
     EmailDeliveryFailure,
     UnavailableProductionEmailAdapter,
     get_aeterna_email_adapter,
+)
+from app.services.common.aeterna_management import (
+    AeternaManagementAuthorityService,
+    get_aeterna_management_authority_service,
 )
 from app.services.common.aeterna_security import (
     AeternaIdentityKeys,
@@ -47,6 +53,7 @@ from app.services.common.aeterna_security import (
     derive_recovery_otp,
     get_identity_keys,
 )
+from app.services.common.email import EMAIL_APP_NAME
 
 MAX_PROVIDER_NAME_BYTES = 64
 MAX_PROVIDER_MESSAGE_ID_BYTES = 255
@@ -86,9 +93,13 @@ class AeternaEmailDeliveryService:
         adapter: AeternaEmailAdapter | None = None,
         key_provider: Callable[[], AeternaIdentityKeys] = get_identity_keys,
         clock: Callable[[], datetime] | None = None,
+        management_service: AeternaManagementAuthorityService | None = None,
     ):
         self.adapter = adapter or get_aeterna_email_adapter()
         self.key_provider = key_provider
+        self.management = (
+            management_service or get_aeterna_management_authority_service()
+        )
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def dispatch_event(
@@ -509,7 +520,7 @@ class AeternaEmailDeliveryService:
                     .where(AeternaRecoveryClaimLink.id == event.recovery_link_id)
                     .with_for_update()
                 )
-                if link is None or link.status != "active" or link.expires_at <= now:
+                if not await self._recovery_entry_available(db, link):
                     event.status = "cancelled"
                     event.cancelled_at = now
                     event.updated_at = now
@@ -540,8 +551,11 @@ class AeternaEmailDeliveryService:
                 if (
                     link is None
                     or link.status != "active"
-                    or link.expires_at <= now
                     or challenge is None
+                    or (
+                        link.expires_at <= now
+                        and challenge.scope != "recovery.recipient.rotate"
+                    )
                     or challenge.status != "active"
                     or challenge.expires_at <= now
                 ):
@@ -625,6 +639,31 @@ class AeternaEmailDeliveryService:
             )
         return DispatchResult(event.id, event.status, event.attempt_count)
 
+    async def _recovery_entry_available(
+        self, db: AsyncSession, link: AeternaRecoveryClaimLink | None
+    ) -> bool:
+        if link is None or link.status == "revoked":
+            return False
+        eligible = await db.scalar(
+            select(AeternaRecoveryGrant.id)
+            .join(
+                AeternaRecoveryRecord,
+                AeternaRecoveryRecord.id == AeternaRecoveryGrant.recovery_id,
+            )
+            .join(
+                AccountPolicy,
+                (AccountPolicy.account_id == AeternaRecoveryGrant.account_id)
+                & (AccountPolicy.epoch == AeternaRecoveryRecord.policy_epoch),
+            )
+            .where(
+                AeternaRecoveryGrant.id == link.grant_id,
+                AeternaRecoveryGrant.state == "available",
+                AeternaRecoveryRecord.state == "sealed",
+                AccountPolicy.state == "RELEASED",
+            )
+        )
+        return eligible is not None
+
     async def _render(
         self,
         db: AsyncSession,
@@ -636,14 +675,17 @@ class AeternaEmailDeliveryService:
     ) -> AeternaEmailEnvelope:
         owner_email = None
         if event.recipient_kind == "owner" or event.event_type == "contact-invitation":
-            owner_email = decrypt_email(
-                keys,
-                account.email_ciphertext,
-                account.email_nonce,
-                "account",
-                account.id,
-                account.email_key_version,
-            )
+            if event.owner_recovery_id is not None:
+                owner_request = await db.get(
+                    AeternaOwnerRecoveryRequest, event.owner_recovery_id
+                )
+                if owner_request is None:
+                    raise RuntimeError("Owner recovery delivery is missing its request")
+                owner_email = await self.management.preferred_mailbox(
+                    db, keys, account, owner_request.device_id
+                )
+            else:
+                owner_email = await self.management.mailbox(db, keys, account)
         custom_message = ""
         template = await db.get(AeternaNotificationTemplate, account.id)
         if event.recipient_kind == "owner":
@@ -674,7 +716,7 @@ class AeternaEmailDeliveryService:
                 code = derive_recovery_otp(
                     keys, recovery.challenge_id, recovery.otp_key_version
                 )
-                subject = "Aeterna owner recovery verification code"
+                subject = f"{EMAIL_APP_NAME} owner recovery verification code"
                 fixed_text = (
                     "Use this one-time code to verify an owner recovery request: "
                     f"{code}\n\nThe code expires in 10 minutes."
@@ -716,17 +758,17 @@ class AeternaEmailDeliveryService:
                     f"{settings.FRONTEND_URL.rstrip('/')}/contact-invitation"
                     f"#token={token}"
                 )
-                subject = "Aeterna recovery contact invitation"
+                subject = f"{EMAIL_APP_NAME} recovery contact invitation"
                 fixed_text = (
-                    "An Aeterna owner has selected this email address as a recovery "
-                    f"contact. Owner: {owner_email}\n\n"
+                    f"An {EMAIL_APP_NAME} owner has selected this email address as a "
+                    f"recovery contact. Owner: {owner_email}\n\n"
                     "No recovery material or private message is included. You may "
                     "accept or decline the role using the link below.\n\n"
                     f"{action_url}"
                 )
                 custom_message = ""
             elif event.event_type == "contact-test":
-                subject = "Aeterna recovery contact delivery test"
+                subject = f"{EMAIL_APP_NAME} recovery contact delivery test"
                 fixed_text = (
                     "This is a delivery test for a recovery-contact role that this "
                     "email address previously accepted and verified."
@@ -742,7 +784,7 @@ class AeternaEmailDeliveryService:
                     )
             elif event.event_type == "recovery-claim-link":
                 link = await db.get(AeternaRecoveryClaimLink, event.recovery_link_id)
-                if link is None or link.status != "active" or link.expires_at <= now:
+                if not await self._recovery_entry_available(db, link):
                     raise EmailDeliveryFailure(
                         "recovery-link-unavailable", retryable=False
                     )
@@ -753,11 +795,13 @@ class AeternaEmailDeliveryService:
                     f"{settings.FRONTEND_URL.rstrip('/')}/recovery-claim"
                     f"#token={token}"
                 )
-                subject = "Aeterna recovery access is available"
+                subject = f"{EMAIL_APP_NAME} recovery access is available"
                 fixed_text = (
-                    "A delayed-recovery grant is now available to this verified "
-                    "recovery contact. The link expires in 24 hours and still "
-                    "requires a separate email code.\n\n"
+                    "Recovery access is available to this verified recovery contact. "
+                    "Open Aeterna on the computer that holds the Vault and paste this "
+                    "email link into Emergency recovery. The app will send a separate "
+                    "mailbox verification code, valid for 10 minutes. The entry link "
+                    "can be used again while this recovery remains authorized.\n\n"
                     f"{action_url}"
                 )
                 custom_message = ""
@@ -776,17 +820,17 @@ class AeternaEmailDeliveryService:
                 code = derive_recovery_otp(
                     keys, challenge.id, challenge.otp_key_version
                 )
-                subject = "Aeterna recovery verification code"
+                subject = f"{EMAIL_APP_NAME} recovery verification code"
                 fixed_text = (
                     "Use this one-time code to continue the delayed-recovery "
                     f"claim: {code}\n\nThe code expires in 10 minutes."
                 )
                 custom_message = ""
             elif event.event_type == "recovery-claimed-contact":
-                subject = "Aeterna recovery security notice"
+                subject = f"{EMAIL_APP_NAME} recovery security notice"
                 fixed_text = (
                     "Another verified recovery contact completed a one-time "
-                    "recovery-secret claim for this Aeterna account."
+                    f"recovery-secret claim for this {EMAIL_APP_NAME} account."
                 )
                 custom_message = ""
             else:
@@ -807,46 +851,48 @@ class AeternaEmailDeliveryService:
     def _owner_copy(self, event_type: str) -> tuple[str, str]:
         messages = {
             "owner-pre-warning": (
-                "Aeterna inactivity warning",
-                "Your Aeterna account entered its pre-warning period. Open a bound "
-                "device to review the account and submit valid activity if appropriate.",
+                f"{EMAIL_APP_NAME} inactivity warning",
+                f"Your {EMAIL_APP_NAME} account entered its pre-warning period. "
+                "Open a bound device to review the account and submit valid activity "
+                "if appropriate.",
             ),
             "owner-grace-period-started": (
-                "Aeterna grace period started",
-                "Your Aeterna account entered its grace period. Provider delivery "
-                "does not confirm that you read this warning.",
+                f"{EMAIL_APP_NAME} grace period started",
+                f"Your {EMAIL_APP_NAME} account entered its grace period. "
+                "Provider delivery does not confirm that you read this warning.",
             ),
             "owner-warning-required": (
-                "Aeterna warning requires confirmation",
-                "Aeterna recovered from an outage and restarted a complete grace "
-                "period. Review and explicitly acknowledge the warning in Aeterna.",
+                f"{EMAIL_APP_NAME} warning requires confirmation",
+                f"{EMAIL_APP_NAME} recovered from an outage and restarted a complete "
+                "grace period. Review and explicitly acknowledge the warning in "
+                f"{EMAIL_APP_NAME}.",
             ),
             "owner-release-authorized": (
-                "Aeterna release boundary reached",
-                "Your Aeterna account reached its release boundary. This notice does "
-                "not contain or authorize access to recovery material.",
+                f"{EMAIL_APP_NAME} release boundary reached",
+                f"Your {EMAIL_APP_NAME} account reached its release boundary. "
+                "This notice does not contain or authorize access to recovery material.",
             ),
             "recovery-claimed-owner": (
-                "Aeterna recovery secret was claimed",
+                f"{EMAIL_APP_NAME} recovery secret was claimed",
                 "A verified recovery contact completed a one-time recovery-secret "
                 "claim. This security notice contains no recovery material.",
             ),
             "owner-recovery-cooling-down": (
-                "Aeterna owner recovery cooling-down started",
+                f"{EMAIL_APP_NAME} owner recovery cooling-down started",
                 "An owner recovery request passed email verification and entered "
                 "a 24-hour cooling-down period. Any active bound device can cancel it.",
             ),
             "owner-recovery-cancelled": (
-                "Aeterna owner recovery cancelled",
+                f"{EMAIL_APP_NAME} owner recovery cancelled",
                 "An active bound device cancelled the pending owner recovery request.",
             ),
             "owner-recovery-material-released": (
-                "Aeterna owner recovery material released",
+                f"{EMAIL_APP_NAME} owner recovery material released",
                 "Recovery material was released to the initiating device after the "
                 "cooling-down period. Access wrappers must now be replaced.",
             ),
             "owner-recovery-successor-authorized": (
-                "Aeterna successor protection authorized",
+                f"{EMAIL_APP_NAME} successor protection authorized",
                 "A bound device and Owner mailbox verification authorized a "
                 "post-compromise successor. No old recovery secret was released; "
                 "the device must complete an atomic local rekey.",
@@ -908,10 +954,16 @@ class AeternaEmailDeliveryService:
 def get_aeterna_email_delivery_service() -> AeternaEmailDeliveryService:
     """Assemble the external email delivery dependency chain."""
 
-    return AeternaEmailDeliveryService(adapter=get_aeterna_email_adapter())
+    return AeternaEmailDeliveryService(
+        adapter=get_aeterna_email_adapter(),
+        management_service=get_aeterna_management_authority_service(),
+    )
 
 
 def get_aeterna_email_callback_service() -> AeternaEmailDeliveryService:
     """Build callback processing without initializing an outbound AWS client."""
 
-    return AeternaEmailDeliveryService(adapter=UnavailableProductionEmailAdapter())
+    return AeternaEmailDeliveryService(
+        adapter=UnavailableProductionEmailAdapter(),
+        management_service=get_aeterna_management_authority_service(),
+    )

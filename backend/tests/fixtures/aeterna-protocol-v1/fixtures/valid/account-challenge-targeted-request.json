@@ -1,0 +1,7 @@
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000213",
+  "account_id": "00000000-0000-4000-8000-000000000020",
+  "email": "recipient@example.com",
+  "purpose": "device_binding"
+}

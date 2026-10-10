@@ -10,10 +10,12 @@ from app.db.session import transaction
 from app.exceptions.http_exceptions import APIException
 from app.models.token import Token
 from app.models.user import User
-from app.services.common.email import EmailService, get_email_service
+from app.services.common.email import EMAIL_APP_NAME, EmailService, get_email_service
 from app.services.common.redis import RedisClient
 from app.services.common.verification_code import (
-    VerificationCodeService, get_verification_code_service)
+    VerificationCodeService,
+    get_verification_code_service,
+)
 
 
 class ClientAuthService(AuthBase):
@@ -76,7 +78,7 @@ class ClientAuthService(AuthBase):
                         template_name="auth/verification.html",
                         template_params={
                             "verification_code": code,
-                            "app_name": settings.PROJECT_NAME,
+                            "app_name": EMAIL_APP_NAME,
                         },
                         subject=f"Your verification code: {code}",
                     )
@@ -118,7 +120,7 @@ class ClientAuthService(AuthBase):
                 template_name="auth/verification.html",
                 template_params={
                     "verification_code": code,
-                    "app_name": settings.PROJECT_NAME,
+                    "app_name": EMAIL_APP_NAME,
                 },
                 subject=f"Your verification code: {code}",
             )
@@ -213,7 +215,7 @@ class ClientAuthService(AuthBase):
             template_name="auth/verification.html",
             template_params={
                 "verification_code": code,
-                "app_name": settings.PROJECT_NAME,
+                "app_name": EMAIL_APP_NAME,
             },
             subject=f"Your verification code: {code}",
         )
@@ -389,7 +391,7 @@ class ClientAuthService(AuthBase):
             template_params={
                 "first_name": user.first_name,
                 "reset_url": reset_url,
-                "app_name": settings.PROJECT_NAME,
+                "app_name": EMAIL_APP_NAME,
             },
             subject="Reset your password",
         )

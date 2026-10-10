@@ -1,0 +1,21 @@
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000201",
+  "data": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "vault_id": "00000000-0000-4000-8000-000000000042",
+    "rotation_id": "00000000-0000-4000-8000-000000000201",
+    "source_recovery_id": "00000000-0000-4000-8000-000000000041",
+    "source_wrapper_digest": "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY",
+    "source_policy_epoch": 1,
+    "source_generation": 1,
+    "target_recovery_id": "00000000-0000-4000-8000-000000000210",
+    "target_policy_epoch": 1,
+    "target_generation": 1,
+    "erc_commitment": "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVU",
+    "binding_kind": "recipient_successor",
+    "state": "provisioned",
+    "srs": "Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2M"
+  }
+}

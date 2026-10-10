@@ -192,6 +192,7 @@ class KnownContactIdentity(ClosedModel):
 
 class OwnerConfigurationData(ClosedModel):
     account_id: UuidString
+    management_email: Annotated[str, Field(min_length=3, max_length=254)]
     owner_email: Annotated[str, Field(min_length=3, max_length=254)]
     contacts: Annotated[list[KnownContactIdentity], Field(max_length=10)]
 

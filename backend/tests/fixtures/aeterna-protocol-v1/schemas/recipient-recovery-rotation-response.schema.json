@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:recipient-recovery-rotation-response",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocolVersion"
+    },
+    "request_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "device_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "vault_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "rotation_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "source_recovery_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "source_wrapper_digest": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        },
+        "source_policy_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "source_generation": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "target_recovery_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "target_policy_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "target_generation": {
+          "const": 1,
+          "type": "integer"
+        },
+        "erc_commitment": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        },
+        "binding_kind": {
+          "const": "recipient_successor",
+          "type": "string"
+        },
+        "target_wrapper_digest": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        },
+        "state": {
+          "enum": ["prepared", "complete"],
+          "type": "string"
+        },
+        "protection_active": {
+          "const": false,
+          "type": "boolean"
+        },
+        "account_management_transferred": {
+          "type": "boolean"
+        },
+        "management_email": {
+          "type": ["string", "null"],
+          "minLength": 3,
+          "maxLength": 254,
+          "x-aeterna-max-utf8-bytes": 254
+        },
+        "updated_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "account_id",
+        "account_management_transferred",
+        "binding_kind",
+        "device_id",
+        "erc_commitment",
+        "management_email",
+        "protection_active",
+        "rotation_id",
+        "source_generation",
+        "source_policy_epoch",
+        "source_recovery_id",
+        "source_wrapper_digest",
+        "state",
+        "target_generation",
+        "target_policy_epoch",
+        "target_recovery_id",
+        "target_wrapper_digest",
+        "updated_at",
+        "vault_id"
+      ],
+      "type": "object",
+      "allOf": [
+        {
+          "if": {
+            "properties": { "state": { "const": "complete" } },
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "account_management_transferred": { "const": true },
+              "management_email": { "type": "string" }
+            }
+          },
+          "else": {
+            "properties": {
+              "account_management_transferred": { "const": false },
+              "management_email": { "type": "null" }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "required": ["data", "protocol_version", "request_id"],
+  "type": "object"
+}

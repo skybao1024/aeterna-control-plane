@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:recipient-recovery-abandon-response",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocolVersion"
+    },
+    "request_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "rotation_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "state": {
+          "const": "abandoned",
+          "type": "string"
+        },
+        "updated_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        }
+      },
+      "required": ["rotation_id", "state", "updated_at"],
+      "type": "object"
+    }
+  },
+  "required": ["data", "protocol_version", "request_id"],
+  "type": "object"
+}

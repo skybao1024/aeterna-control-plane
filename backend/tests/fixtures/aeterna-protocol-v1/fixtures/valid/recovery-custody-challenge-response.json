@@ -1,0 +1,9 @@
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000212",
+  "data": {
+    "challenge_id": "00000000-0000-4000-8000-000000000211",
+    "challenge": "iIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIg",
+    "expires_at": "2030-06-01T00:05:00Z"
+  }
+}

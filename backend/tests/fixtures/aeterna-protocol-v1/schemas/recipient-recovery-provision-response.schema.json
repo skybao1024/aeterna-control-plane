@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:recipient-recovery-provision-response",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocolVersion"
+    },
+    "request_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "device_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "vault_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "rotation_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "source_recovery_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "source_wrapper_digest": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        },
+        "source_policy_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "source_generation": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "target_recovery_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "target_policy_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "target_generation": {
+          "const": 1,
+          "type": "integer"
+        },
+        "erc_commitment": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        },
+        "binding_kind": {
+          "const": "recipient_successor",
+          "type": "string"
+        },
+        "state": {
+          "const": "provisioned",
+          "type": "string"
+        },
+        "srs": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        }
+      },
+      "required": [
+        "account_id",
+        "binding_kind",
+        "device_id",
+        "erc_commitment",
+        "rotation_id",
+        "source_generation",
+        "source_policy_epoch",
+        "source_recovery_id",
+        "source_wrapper_digest",
+        "srs",
+        "state",
+        "target_generation",
+        "target_policy_epoch",
+        "target_recovery_id",
+        "vault_id"
+      ],
+      "type": "object"
+    }
+  },
+  "required": ["data", "protocol_version", "request_id"],
+  "type": "object"
+}

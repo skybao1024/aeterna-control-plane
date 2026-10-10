@@ -42,6 +42,10 @@ from app.schemas.client.aeterna_notification import (
     OwnerConfigurationRequest,
 )
 from app.services.client.aeterna_heartbeat import DEVICE_DORMANCY
+from app.services.common.aeterna_management import (
+    AeternaManagementAuthorityService,
+    get_aeterna_management_authority_service,
+)
 from app.services.common.aeterna_security import (
     AeternaIdentityKeys,
     IdentityKeyUnavailable,
@@ -86,11 +90,15 @@ class AeternaNotificationService:
         clock: Callable[[], datetime] = utc_now,
         uuid_factory: Callable[[], uuid.UUID] = uuid.uuid4,
         random_bytes: Callable[[int], bytes] = secrets.token_bytes,
+        management_service: AeternaManagementAuthorityService | None = None,
     ):
         self.key_provider = key_provider
         self.clock = clock
         self.uuid_factory = uuid_factory
         self.random_bytes = random_bytes
+        self.management = (
+            management_service or get_aeterna_management_authority_service()
+        )
 
     async def create_contact(
         self,
@@ -479,13 +487,9 @@ class AeternaNotificationService:
         account, _device, _replay = await self._authorize_owner(db, payload, document)
         contacts = []
         try:
-            owner_email = decrypt_email(
-                keys,
-                account.email_ciphertext,
-                account.email_nonce,
-                "account",
-                account.id,
-                account.email_key_version,
+            owner_email = await self.management.mailbox(db, keys, account)
+            management_email = await self.management.preferred_mailbox(
+                db, keys, account, _device.id
             )
             for contact_id in signed.contact_ids:
                 contact = await self._locked_contact(
@@ -511,6 +515,7 @@ class AeternaNotificationService:
         data = {
             "account_id": str(account.id),
             "owner_email": owner_email,
+            "management_email": management_email,
             "contacts": contacts,
         }
         await db.rollback()
@@ -1339,4 +1344,6 @@ class AeternaNotificationService:
 def get_aeterna_notification_service() -> AeternaNotificationService:
     """Assemble the contact and notification service dependency chain."""
 
-    return AeternaNotificationService()
+    return AeternaNotificationService(
+        management_service=get_aeterna_management_authority_service()
+    )

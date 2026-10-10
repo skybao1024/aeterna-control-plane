@@ -79,3 +79,53 @@ documentation is disabled.
 The OpenAPI contract must not advertise generic file upload or cloud-storage
 operations. Aeterna control-plane APIs never accept vault content, messages,
 media, or attachments.
+
+Recipient recovery is separate from Owner account recovery. The desktop uses
+`POST /api/v1/recovery/recipient/claim/start` and
+`POST /api/v1/recovery/recipient/claim/verify` to obtain a five-minute
+`recovery.recipient.rotate` mailbox authorization. Subsequent operations require
+both that token in the closed body and the registered device's signature:
+
+- `POST /api/v1/recovery/recipient/secret`
+- `POST /api/v1/recovery/recipient/rotations/{rotation_id}/provision`
+- `POST /api/v1/recovery/recipient/rotations/{rotation_id}/prepare`
+- `POST /api/v1/recovery/recipient/rotations/{rotation_id}/confirm`
+- `POST /api/v1/recovery/recipient/rotations/{rotation_id}/abandon`
+
+The signed source binding always includes account, device, Vault, recovery
+record, wrapper digest, and rotation IDs. Provision adds the successor record ID
+and ERC commitment; prepare and confirm also bind the successor wrapper digest.
+Domains are `aeterna.recipient-recovery.<operation>.v1`. The service never accepts
+a password, ERC, VDK, or Vault content. The claim website directs the contact to
+native recovery and does not generate a desktop JSON handoff.
+
+Recipient entry links have no 24-hour entry deadline while the exact source
+grant is eligible, or the same contact must resume an exact completed rotation
+receipt. Recipient OTPs still expire after ten minutes and are purpose-bound so
+legacy claim verification cannot consume them.
+
+The legacy `POST /api/v1/recovery/claim/start`,
+`POST /api/v1/recovery/claim/verify`, and
+`POST /api/v1/recovery/{recovery_id}/release-secret` routes are deprecated,
+error-only tombstones. Valid requests return HTTP 400
+`recovery.claim_unavailable` with `Cache-Control: no-store`, without reading
+recovery state, calling KMS, sending mail or consuming grants. Previously issued
+`recovery.srs.read` tokens cannot be redeemed or promoted to recipient authority.
+Original email entry links remain usable through the native recipient flow when
+their exact grant or confirmation receipt is eligible. Existing claimed grants
+are not automatically reopened. See
+[signed SRS retrieval and legacy retirement](../architecture/adr/0008-signed-srs-retrieval-and-legacy-retirement.md).
+
+Successor SRS responses use `Cache-Control: no-store`. The encrypted server
+envelope and prepared digest survive mailbox-token expiry and long offline
+local work. Exact re-verification by the same contact permits redelivery or
+confirmation of the same stage. Confirmation retires only the source record and
+its grants. It does not rearm account protection, advance the account policy
+epoch, or change the account-wide ERC commitment. See
+[recipient rotation and custody](../architecture/adr/0006-recipient-vault-rotation-and-custody.md).
+
+`POST /api/v1/recovery/custody/verify` verifies a supplied ERC commitment for the
+current Owner-managed, `ACTIVE`, sealed local binding. It uses domain
+`aeterna.recovery-custody.verify.v1`, requires the registered device signature,
+and returns only `{verified: true}`. It changes no account state and does not
+receive or return the ERC itself.

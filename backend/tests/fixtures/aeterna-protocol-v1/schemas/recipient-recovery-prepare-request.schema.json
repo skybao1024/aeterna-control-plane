@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:recipient-recovery-prepare-request",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocolVersion"
+    },
+    "claim_token": {
+      "$ref": "common.schema.json#/$defs/base64url32"
+    },
+    "signed": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "canonicalization": {
+          "$ref": "common.schema.json#/$defs/canonicalization"
+        },
+        "device_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "protocol_version": {
+          "$ref": "common.schema.json#/$defs/protocolVersion"
+        },
+        "recovery_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "request_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "signature_version": {
+          "$ref": "common.schema.json#/$defs/signatureVersion"
+        },
+        "vault_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "wrapper_digest": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        },
+        "rotation_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "domain": {
+          "const": "aeterna.recipient-recovery.prepare.v1",
+          "type": "string"
+        },
+        "operation": {
+          "const": "recipient_recovery.prepare",
+          "type": "string"
+        },
+        "target_recovery_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "erc_commitment": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        },
+        "target_wrapper_digest": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        }
+      },
+      "required": [
+        "account_id",
+        "canonicalization",
+        "device_id",
+        "domain",
+        "erc_commitment",
+        "operation",
+        "protocol_version",
+        "recovery_id",
+        "request_id",
+        "rotation_id",
+        "signature_version",
+        "target_recovery_id",
+        "target_wrapper_digest",
+        "vault_id",
+        "wrapper_digest"
+      ],
+      "type": "object"
+    },
+    "signature": {
+      "$ref": "common.schema.json#/$defs/base64url64"
+    }
+  },
+  "required": ["claim_token", "protocol_version", "signature", "signed"],
+  "type": "object"
+}

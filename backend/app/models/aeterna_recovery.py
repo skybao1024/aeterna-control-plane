@@ -216,6 +216,10 @@ class AeternaRecoveryOtpChallenge(BaseModel):
             "otp_key_version > 0",
             name="ck_aeterna_recovery_otp_challenges_key_version",
         ),
+        CheckConstraint(
+            "scope IN ('recovery.srs.read', 'recovery.recipient.rotate')",
+            name="ck_aeterna_recovery_otp_challenges_scope",
+        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -227,6 +231,12 @@ class AeternaRecoveryOtpChallenge(BaseModel):
     )
     otp_verifier = Column(LargeBinary, nullable=False)
     otp_key_version = Column(Integer, nullable=False)
+    scope = Column(
+        String(32),
+        nullable=False,
+        default="recovery.srs.read",
+        server_default="recovery.srs.read",
+    )
     attempt_count = Column(Integer, nullable=False, default=0)
     status = Column(String(16), nullable=False)
     expires_at = Column(TIMESTAMP(timezone=True), nullable=False)
@@ -235,7 +245,7 @@ class AeternaRecoveryOtpChallenge(BaseModel):
 
 
 class AeternaRecoveryClaimToken(BaseModel):
-    """Digest-only five-minute capability for exactly one SRS read."""
+    """Digest-only short-lived capability for a bound recovery operation."""
 
     __tablename__ = "aeterna_recovery_claim_tokens"
     __table_args__ = (
@@ -251,7 +261,7 @@ class AeternaRecoveryClaimToken(BaseModel):
             name="ck_aeterna_recovery_claim_tokens_wrapper_digest_length",
         ),
         CheckConstraint(
-            "scope = 'recovery.srs.read'",
+            "scope IN ('recovery.srs.read', 'recovery.recipient.rotate')",
             name="ck_aeterna_recovery_claim_tokens_scope",
         ),
         CheckConstraint(
@@ -312,7 +322,9 @@ class AeternaRecoveryAudit(BaseModel):
             "'claim.verified', 'secret.released', 'owner.started', "
             "'owner.verified', 'owner.cancelled', 'owner.released', "
             "'owner.completed', 'rotation.provisioned', 'rotation.activated', "
-            "'rotation.device_completed', 'rotation.completed')",
+            "'rotation.device_completed', 'rotation.completed', "
+            "'recipient.reserved', 'recipient.provisioned', 'recipient.prepared', "
+            "'recipient.completed', 'recipient.abandoned')",
             name="ck_aeterna_recovery_audit_event_type",
         ),
     )

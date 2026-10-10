@@ -77,11 +77,11 @@ async def test_owner_notifier_challenge_and_security_notice_use_one_ses_boundary
         assert tags["aeterna-delivery"] == "immediate"
 
     content = challenge["Content"]["Simple"]
-    assert content["Subject"]["Data"] == "Verify your Aeterna email address"
+    assert content["Subject"]["Data"] == "Verify your Aeterna Relay email address"
     assert content["Body"]["Html"]["Data"] == jinja_env.get_template(
         "auth/verification.html"
     ).render(
-        first_name="Aeterna user",
+        first_name="Aeterna Relay user",
         verification_code="12345678",
         expires_in_minutes=10,
     )
@@ -92,7 +92,9 @@ async def test_owner_notifier_challenge_and_security_notice_use_one_ses_boundary
     assert "box-sizing" not in text
 
     security_content = security["Content"]["Simple"]
-    assert security_content["Subject"]["Data"] == "Aeterna account security notice"
+    assert (
+        security_content["Subject"]["Data"] == "Aeterna Relay account security notice"
+    )
     assert "Event: device-bound" in security_content["Body"]["Text"]["Data"]
 
 

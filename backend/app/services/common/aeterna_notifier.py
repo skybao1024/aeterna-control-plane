@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from app.services.common.email import EmailService, get_email_service
+from app.services.common.email import EMAIL_APP_NAME, EmailService, get_email_service
 
 
 class AeternaAccountNotifier(Protocol):
@@ -24,7 +24,7 @@ class EmailAeternaAccountNotifier:
     ) -> bool:
         return await self.email_service.send_verification_email(
             email=email,
-            first_name="Aeterna user",
+            first_name=f"{EMAIL_APP_NAME} user",
             verification_code=code,
             expires_in_minutes=expires_in_minutes,
         )
@@ -32,10 +32,10 @@ class EmailAeternaAccountNotifier:
     async def send_security_notice(self, email: str, event: str) -> bool:
         return await self.email_service.send(
             to_emails=email,
-            subject="Aeterna account security notice",
+            subject=f"{EMAIL_APP_NAME} account security notice",
             html_content=(
                 "<p>A security-sensitive device binding event occurred for your "
-                f"Aeterna account.</p><p>Event: {event}</p>"
+                f"{EMAIL_APP_NAME} account.</p><p>Event: {event}</p>"
             ),
         )
 

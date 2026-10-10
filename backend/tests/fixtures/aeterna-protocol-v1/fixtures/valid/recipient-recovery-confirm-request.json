@@ -1,0 +1,22 @@
+{
+  "protocol_version": 1,
+  "claim_token": "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE",
+  "signed": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "canonicalization": "jcs-rfc8785",
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "protocol_version": 1,
+    "recovery_id": "00000000-0000-4000-8000-000000000041",
+    "request_id": "00000000-0000-4000-8000-000000000203",
+    "signature_version": 1,
+    "vault_id": "00000000-0000-4000-8000-000000000042",
+    "wrapper_digest": "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY",
+    "rotation_id": "00000000-0000-4000-8000-000000000201",
+    "domain": "aeterna.recipient-recovery.confirm.v1",
+    "operation": "recipient_recovery.confirm",
+    "target_recovery_id": "00000000-0000-4000-8000-000000000210",
+    "erc_commitment": "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVU",
+    "target_wrapper_digest": "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3c"
+  },
+  "signature": "NjbcoiD-CryV3_pWuFnrbKifeXVAfKMpaO4VgkyFB7DfL8AZS9AXFN0UFoSIYMPC3ky0vBw3GZG6ADfZrNipAw"
+}

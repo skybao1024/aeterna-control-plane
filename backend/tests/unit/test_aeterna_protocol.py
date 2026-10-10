@@ -6,11 +6,13 @@ from pathlib import Path
 
 import pytest
 import rfc8785
+from httpx import ASGITransport, AsyncClient
 from starlette.requests import Request
 
 from app.api.client.protocol import parse_protocol_body
 from app.configs.docs_apps import create_client_app
 from app.core.config import settings
+from app.db.session import get_db
 from app.exceptions.aeterna_protocol import AeternaProtocolException
 from app.route.router_registry import get_client_routes
 from app.schemas.client.aeterna_protocol import (
@@ -24,12 +26,30 @@ from app.schemas.client.aeterna_protocol import (
     HeartbeatRequest,
     HeartbeatResponse,
 )
+from app.schemas.client.aeterna_recipient_recovery import (
+    RecipientRecoveryAbandonRequest,
+    RecipientRecoveryAbandonResponse,
+    RecipientRecoveryClaimResponse,
+    RecipientRecoveryConfirmRequest,
+    RecipientRecoveryPrepareRequest,
+    RecipientRecoveryProvisionRequest,
+    RecipientRecoveryProvisionResponse,
+    RecipientRecoveryResponse,
+    RecipientRecoverySecretRequest,
+    RecipientRecoverySecretResponse,
+    RecoveryCustodyChallengeRequest,
+    RecoveryCustodyChallengeResponse,
+    RecoveryCustodyVerifyRequest,
+    RecoveryCustodyVerifyResponse,
+)
 from app.schemas.client.aeterna_recovery import (
     OwnerRecoveryActionRequest,
     OwnerRecoveryResponse,
     OwnerRecoverySecretResponse,
     OwnerRecoveryStartRequest,
     OwnerRecoveryVerifyRequest,
+    RecoveryClaimStartRequest,
+    RecoveryClaimVerifyRequest,
     RecoveryRecordActionRequest,
     RecoveryRecordEnrollRequest,
     RecoveryRecordProvisionRequest,
@@ -37,6 +57,7 @@ from app.schemas.client.aeterna_recovery import (
     RecoveryRotationProvisionRequest,
     RecoveryRotationProvisionResponse,
     RecoveryRotationResponse,
+    RecoverySecretRequest,
     RecoverySecretResponse,
 )
 from app.schemas.client.aeterna_setup import (
@@ -44,6 +65,10 @@ from app.schemas.client.aeterna_setup import (
     PolicyConfigureResponse,
     SetupStatusRequest,
     SetupStatusResponse,
+)
+from app.services.client.aeterna_recovery import (
+    AeternaRecoveryService,
+    get_aeterna_recovery_service,
 )
 from app.services.common.aeterna_security import (
     IdentityKeyUnavailable,
@@ -55,7 +80,7 @@ from app.services.common.aeterna_security import (
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "aeterna-protocol-v1"
 EXPECTED_PUBLIC_RELEASE_DIGEST = (
-    "4ebed102b09cfb905ec21ff938133cba874ce411f5f185e54393b24288ab4fb7"
+    "3b5f4a167279d3efe3ecde641ee8daa92fe7b21ab71c3e8d3843469daf63917c"
 )
 
 
@@ -86,7 +111,7 @@ def make_request(body: bytes, content_type: str = "application/json") -> Request
 
 def test_vendored_public_release_digest_and_every_file_hash_match():
     manifest = load_json("manifest.json")
-    assert manifest["release_tag"] == "protocol-v1.7.0"
+    assert manifest["release_tag"] == "protocol-v1.9.0"
     assert manifest["release_digest"] == EXPECTED_PUBLIC_RELEASE_DIGEST
     for entry in manifest["files"]:
         content = (FIXTURE_ROOT / entry["path"]).read_bytes()
@@ -181,6 +206,82 @@ def test_published_signature_failure_vectors_fail_closed():
             envelope["signed"],
             envelope["signature"],
         )
+
+
+@pytest.mark.parametrize(
+    ("name", "model"),
+    [
+        ("recipient-recovery-secret", RecipientRecoverySecretRequest),
+        ("recipient-recovery-provision", RecipientRecoveryProvisionRequest),
+        ("recipient-recovery-prepare", RecipientRecoveryPrepareRequest),
+        ("recipient-recovery-confirm", RecipientRecoveryConfirmRequest),
+        ("recipient-recovery-abandon", RecipientRecoveryAbandonRequest),
+        ("recovery-custody-challenge", RecoveryCustodyChallengeRequest),
+        ("recovery-custody-verify", RecoveryCustodyVerifyRequest),
+    ],
+)
+def test_recipient_and_custody_signature_vectors_match_closed_runtime_models(
+    name, model
+):
+    fixture = load_json(f"fixtures/signatures/{name}.json")
+    request = load_json(f"fixtures/valid/{name}-request.json")
+    model.model_validate(request)
+    assert rfc8785.dumps(request["signed"]) == decode_base64url(
+        fixture["canonical_bytes"], len(rfc8785.dumps(request["signed"]))
+    )
+    assert verify_signature(
+        decode_base64url(fixture["public_key"], 32),
+        request["signed"],
+        request["signature"],
+    )
+    invalid = load_json(f"fixtures/signatures/{name}-cross-domain.json")
+    assert not verify_signature(
+        decode_base64url(invalid["verification_public_key"], 32),
+        invalid["envelope"]["signed"],
+        invalid["envelope"]["signature"],
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "model"),
+    [
+        ("recipient-recovery-secret", RecipientRecoverySecretRequest),
+        ("recipient-recovery-provision", RecipientRecoveryProvisionRequest),
+        ("recipient-recovery-prepare", RecipientRecoveryPrepareRequest),
+        ("recipient-recovery-confirm", RecipientRecoveryConfirmRequest),
+        ("recipient-recovery-abandon", RecipientRecoveryAbandonRequest),
+        ("recovery-custody-challenge", RecoveryCustodyChallengeRequest),
+        ("recovery-custody-verify", RecoveryCustodyVerifyRequest),
+    ],
+)
+@pytest.mark.asyncio
+async def test_recipient_and_custody_extra_fields_fail_closed(name, model):
+    with pytest.raises(AeternaProtocolException) as invalid:
+        await parse_protocol_body(
+            make_request(
+                (
+                    FIXTURE_ROOT / f"fixtures/invalid/{name}-extra-field.json"
+                ).read_bytes()
+            ),
+            model,
+        )
+    assert invalid.value.code == "protocol.invalid_request"
+
+
+@pytest.mark.parametrize(
+    ("name", "model"),
+    [
+        ("recipient-recovery-secret", RecipientRecoverySecretResponse),
+        ("recipient-recovery-provision", RecipientRecoveryProvisionResponse),
+        ("recipient-recovery-rotation", RecipientRecoveryResponse),
+        ("recipient-recovery-abandon", RecipientRecoveryAbandonResponse),
+        ("recipient-recovery-claim", RecipientRecoveryClaimResponse),
+        ("recovery-custody-challenge", RecoveryCustodyChallengeResponse),
+        ("recovery-custody-verify", RecoveryCustodyVerifyResponse),
+    ],
+)
+def test_recipient_and_custody_success_fixtures_match_runtime_models(name, model):
+    model.model_validate(load_json(f"fixtures/valid/{name}-response.json"))
 
 
 def test_python_jcs_matches_unicode_property_order_and_escaping_vector():
@@ -342,6 +443,27 @@ def test_client_registry_exposes_only_v1_protocol_and_safe_config_routes():
     assert "/api/v1/recovery/records/{recovery_id}/abandon" in paths
     assert "/api/v1/recovery/claim/start" in paths
     assert "/api/v1/recovery/claim/verify" in paths
+    for retired in (
+        "/api/v1/recovery/claim/start",
+        "/api/v1/recovery/claim/verify",
+        "/api/v1/recovery/{recovery_id}/release-secret",
+    ):
+        operation = client_app.openapi()["paths"][retired]["post"]
+        assert operation["deprecated"] is True
+        assert "200" not in operation["responses"]
+        assert "201" not in operation["responses"]
+        assert operation["responses"]["400"]["content"]["application/json"][
+            "schema"
+        ] == {"$ref": "#/components/schemas/ProtocolErrorResponse"}
+    assert "/api/v1/recovery/recipient/claim/start" in paths
+    assert "/api/v1/recovery/recipient/claim/verify" in paths
+    assert "/api/v1/recovery/recipient/secret" in paths
+    for operation in ("provision", "prepare", "confirm", "abandon"):
+        assert (
+            f"/api/v1/recovery/recipient/rotations/{{rotation_id}}/{operation}" in paths
+        )
+    assert "/api/v1/recovery/custody/challenge" in paths
+    assert "/api/v1/recovery/custody/verify" in paths
     assert "/api/v1/recovery/{recovery_id}/release-secret" in paths
     assert "/api/v1/recovery/owner/start" in paths
     assert "/api/v1/recovery/owner/verify" in paths
@@ -350,6 +472,98 @@ def test_client_registry_exposes_only_v1_protocol_and_safe_config_routes():
     assert "/api/v1/recovery/rotations/{rotation_id}/confirm" in paths
     assert "/api/v1/auth/register" not in paths
     assert "/api/v1/auth/login" not in paths
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ("start", "verify", "secret"))
+async def test_retired_unsigned_recovery_http_is_error_only_without_database(operation):
+    def forbidden_database():
+        raise AssertionError("Retired recovery must not open a database session")
+
+    def forbidden_provider():
+        raise AssertionError("Retired recovery must not obtain a KMS provider")
+
+    app = create_client_app()
+    app.dependency_overrides[get_db] = forbidden_database
+    app.dependency_overrides[get_aeterna_recovery_service] = (
+        lambda: AeternaRecoveryService(
+            claim_provider=forbidden_provider,
+            identity_key_provider=forbidden_provider,
+        )
+    )
+    request_id = "00000000-0000-4000-8000-000000000001"
+    recovery_id = "00000000-0000-4000-8000-000000000002"
+    body = {"protocol_version": 1, "request_id": request_id}
+    if operation == "secret":
+        path = f"/api/v1/recovery/{recovery_id}/release-secret"
+        body.update(
+            claim_token="A" * 43,
+            device_id="00000000-0000-4000-8000-000000000003",
+            recovery_id=recovery_id,
+            vault_id="00000000-0000-4000-8000-000000000004",
+            wrapper_digest="A" * 43,
+        )
+    else:
+        path = f"/api/v1/recovery/claim/{operation}"
+        body["claim_link_token"] = "A" * 43
+        if operation == "verify":
+            body.update(challenge_id=recovery_id, code="12345678")
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://synthetic.test"
+    ) as client:
+        response = await client.post(path, json=body)
+    assert response.status_code == 400
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {
+        "protocol_version": 1,
+        "request_id": request_id,
+        "error": {"code": "recovery.claim_unavailable"},
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "operation",
+    ("start_claim", "verify_claim", "release_secret", "_start_claim", "_verify_claim"),
+)
+async def test_retired_recovery_service_cannot_use_database_or_provider(operation):
+    class ForbiddenDatabase:
+        def __getattr__(self, name):
+            raise AssertionError("Retired scope must not read or mutate database state")
+
+    def forbidden_provider():
+        raise AssertionError("Retired scope must not obtain recovery or identity keys")
+
+    service = AeternaRecoveryService(
+        claim_provider=forbidden_provider, identity_key_provider=forbidden_provider
+    )
+    common = {
+        "protocol_version": 1,
+        "request_id": "00000000-0000-4000-8000-000000000001",
+    }
+    if "start" in operation:
+        payload = RecoveryClaimStartRequest(**common, claim_link_token="A" * 43)
+    elif "verify" in operation:
+        payload = RecoveryClaimVerifyRequest(
+            **common,
+            claim_link_token="A" * 43,
+            challenge_id="00000000-0000-4000-8000-000000000002",
+            code="12345678",
+        )
+    else:
+        payload = RecoverySecretRequest(
+            **common,
+            claim_token="A" * 43,
+            device_id="00000000-0000-4000-8000-000000000002",
+            recovery_id="00000000-0000-4000-8000-000000000003",
+            vault_id="00000000-0000-4000-8000-000000000004",
+            wrapper_digest="A" * 43,
+        )
+    kwargs = {"scope": "recovery.srs.read"} if operation.startswith("_") else {}
+    with pytest.raises(AeternaProtocolException) as denied:
+        await getattr(service, operation)(ForbiddenDatabase(), payload, **kwargs)
+    assert denied.value.status_code == 400
+    assert denied.value.code == "recovery.claim_unavailable"
 
 
 def test_environment_key_provider_fails_closed_in_production(monkeypatch):

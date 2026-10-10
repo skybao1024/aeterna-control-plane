@@ -29,6 +29,10 @@ from app.schemas.client.aeterna_protocol import (
     DeviceBindingStatusRequest,
 )
 from app.services.client.aeterna_heartbeat import DEVICE_DORMANCY
+from app.services.common.aeterna_management import (
+    AeternaManagementAuthorityService,
+    get_aeterna_management_authority_service,
+)
 from app.services.common.aeterna_notifier import AeternaAccountNotifier
 from app.services.common.aeterna_security import (
     AeternaIdentityKeys,
@@ -82,6 +86,7 @@ class AeternaIdentityService:
         otp_factory: Callable[[], str] = make_otp,
         token_factory: Callable[[], tuple[str, bytes]] = make_token,
         random_bytes: Callable[[int], bytes] = secrets.token_bytes,
+        management_service: AeternaManagementAuthorityService | None = None,
     ):
         self.key_provider = key_provider
         self.clock = clock
@@ -89,6 +94,9 @@ class AeternaIdentityService:
         self.otp_factory = otp_factory
         self.token_factory = token_factory
         self.random_bytes = random_bytes
+        self.management = (
+            management_service or get_aeterna_management_authority_service()
+        )
 
     def _keys(self, request_id: str | None = None) -> AeternaIdentityKeys:
         try:
@@ -149,11 +157,31 @@ class AeternaIdentityService:
                 429, "auth.rate_limited", payload.request_id, retry_after_seconds=retry
             )
 
-        account = await db.scalar(
-            select(AeternaAccount).where(AeternaAccount.email_lookup == lookup)
-        )
         binding_id = uuid.UUID(payload.binding_id) if payload.binding_id else None
+        if payload.account_id is not None:
+            account = await db.get(AeternaAccount, uuid.UUID(payload.account_id))
+        elif binding_id is not None:
+            binding = await db.get(AeternaDeviceBinding, binding_id)
+            account = (
+                await db.get(AeternaAccount, binding.account_id)
+                if binding is not None
+                else None
+            )
+        else:
+            account = await db.scalar(
+                select(AeternaAccount).where(AeternaAccount.email_lookup == lookup)
+            )
         verified_binding_id: Optional[uuid.UUID] = None
+        if account is not None and not await self.management.accepts_mailbox(
+            db, account, lookup
+        ):
+            raise AeternaProtocolException(
+                400, "auth.challenge_invalid", payload.request_id
+            )
+        if payload.account_id is not None and account is None:
+            raise AeternaProtocolException(
+                400, "auth.challenge_invalid", payload.request_id
+            )
         if binding_id is not None and account is not None:
             visible_binding = await db.scalar(
                 select(AeternaDeviceBinding.id).where(
@@ -214,9 +242,17 @@ class AeternaIdentityService:
     ) -> dict[str, Any]:
         keys = self._keys(payload.request_id)
         challenge_uuid = uuid.UUID(payload.challenge_id)
+        visible = await db.get(AeternaAccountChallenge, challenge_uuid)
+        if visible is not None and visible.account_id is not None:
+            await db.scalar(
+                select(AeternaAccount)
+                .where(AeternaAccount.id == visible.account_id)
+                .with_for_update()
+            )
         challenge = await db.scalar(
             select(AeternaAccountChallenge)
             .where(AeternaAccountChallenge.id == challenge_uuid)
+            .execution_options(populate_existing=True)
             .with_for_update()
         )
         if challenge is None or challenge.status == "consumed":
@@ -695,11 +731,23 @@ class AeternaIdentityService:
         )
         account = await db.scalar(
             select(AeternaAccount)
-            .where(AeternaAccount.email_lookup == challenge.email_lookup)
+            .where(
+                AeternaAccount.id == challenge.account_id
+                if challenge.account_id is not None
+                else AeternaAccount.email_lookup == challenge.email_lookup
+            )
             .with_for_update()
         )
         if account is not None:
+            if not account.is_active or not await self.management.accepts_mailbox(
+                db, account, challenge.email_lookup
+            ):
+                raise AeternaProtocolException(
+                    400, "auth.challenge_invalid", request_id
+                )
             return account
+        if challenge.account_id is not None:
+            raise AeternaProtocolException(400, "auth.challenge_invalid", request_id)
         if challenge.purpose in {
             "device_binding_cancellation",
             "device_binding_delayed_confirmation",
@@ -757,12 +805,28 @@ class AeternaIdentityService:
             raise AeternaProtocolException(
                 401, "auth.binding_grant_invalid", request_id
             ) from None
+        visible = await db.scalar(
+            select(AeternaBindingGrant).where(
+                AeternaBindingGrant.id == uuid.UUID(grant_id),
+                AeternaBindingGrant.token_digest == digest,
+            )
+        )
+        if visible is None:
+            raise AeternaProtocolException(
+                401, "auth.binding_grant_invalid", request_id
+            )
+        await db.scalar(
+            select(AeternaAccount)
+            .where(AeternaAccount.id == visible.account_id)
+            .with_for_update()
+        )
         grant = await db.scalar(
             select(AeternaBindingGrant)
             .where(
                 AeternaBindingGrant.id == uuid.UUID(grant_id),
                 AeternaBindingGrant.token_digest == digest,
             )
+            .execution_options(populate_existing=True)
             .with_for_update()
         )
         if (
@@ -771,6 +835,18 @@ class AeternaIdentityService:
             or grant.expires_at <= self.clock()
             or (grant.consumed_at is not None and not allow_consumed)
             or (binding_id is not None and grant.binding_id != binding_id)
+        ):
+            raise AeternaProtocolException(
+                401, "auth.binding_grant_invalid", request_id
+            )
+        challenge = await db.get(AeternaAccountChallenge, grant.challenge_id)
+        account = await db.get(AeternaAccount, grant.account_id)
+        if (
+            challenge is None
+            or account is None
+            or not await self.management.accepts_mailbox(
+                db, account, challenge.email_lookup
+            )
         ):
             raise AeternaProtocolException(
                 401, "auth.binding_grant_invalid", request_id
@@ -994,14 +1070,7 @@ class AeternaIdentityService:
             raise AeternaProtocolException(404, "device.binding_not_found", request_id)
         keys = self._keys(request_id)
         try:
-            return decrypt_email(
-                keys,
-                account.email_ciphertext,
-                account.email_nonce,
-                "account",
-                account.id,
-                account.email_key_version,
-            )
+            return await self.management.mailbox(db, keys, account)
         except (IdentityKeyUnavailable, UnicodeDecodeError, ValueError):
             raise AeternaProtocolException(
                 503, "service.temporarily_unavailable", request_id
@@ -1045,4 +1114,7 @@ class AeternaIdentityService:
 
 
 def get_aeterna_identity_service() -> AeternaIdentityService:
-    return AeternaIdentityService(key_provider=get_identity_keys)
+    return AeternaIdentityService(
+        key_provider=get_identity_keys,
+        management_service=get_aeterna_management_authority_service(),
+    )

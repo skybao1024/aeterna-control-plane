@@ -22,6 +22,10 @@ from app.models.aeterna_identity import (
 )
 from app.models.aeterna_recovery import AeternaRecoveryRecord
 from app.schemas.client.aeterna_setup import PolicyConfigureRequest, SetupStatusRequest
+from app.services.common.aeterna_management import (
+    AeternaManagementAuthorityService,
+    get_aeterna_management_authority_service,
+)
 from app.services.common.aeterna_security import (
     encode_base64url,
     request_digest,
@@ -48,9 +52,13 @@ class AeternaSetupService:
         self,
         clock: Callable[[], datetime] = utc_now,
         uuid_factory: Callable[[], uuid.UUID] = uuid.uuid4,
+        management_service: AeternaManagementAuthorityService | None = None,
     ):
         self.clock = clock
         self.uuid_factory = uuid_factory
+        self.management = (
+            management_service or get_aeterna_management_authority_service()
+        )
 
     async def configure_policy(
         self,
@@ -67,7 +75,8 @@ class AeternaSetupService:
             payload.signature,
             signed.request_id,
         )
-        if device.policy_epoch != account.current_policy_epoch:
+        transferred = await self.management.primary_alias(db, account.id) is not None
+        if device.policy_epoch != account.current_policy_epoch and not transferred:
             raise AeternaProtocolException(403, "device.not_active", signed.request_id)
 
         digest = request_digest(document)
@@ -96,8 +105,17 @@ class AeternaSetupService:
             )
             .with_for_update()
         )
+        recipient_reactivation = (
+            transferred
+            and policy is not None
+            and policy.state == AccountPolicyState.RELEASED.value
+            and policy.epoch == account.current_policy_epoch
+        )
         if policy is not None and (
-            policy.state != AccountPolicyState.ACTIVE.value
+            (
+                policy.state != AccountPolicyState.ACTIVE.value
+                and not recipient_reactivation
+            )
             or policy.epoch != account.current_policy_epoch
         ):
             raise AeternaProtocolException(409, "policy.unavailable", signed.request_id)
@@ -106,6 +124,19 @@ class AeternaSetupService:
         inactivity_seconds = signed.inactivity_days * SECONDS_PER_DAY
         warning_seconds = signed.warning_days * SECONDS_PER_DAY
         grace_seconds = signed.grace_days * SECONDS_PER_DAY
+        if recipient_reactivation:
+            policy.retired_at = now
+            policy.updated_at = now
+            account.current_policy_epoch += 1
+            account.current_recovery_generation = 1
+            account.erc_commitment = None
+            account.erc_commitment_epoch = None
+            account.erc_commitment_generation = None
+            await db.flush()
+            policy = None
+        if transferred:
+            device.policy_epoch = account.current_policy_epoch
+            device.heartbeat_authorized_at = now
         if policy is None:
             policy = AccountPolicy(
                 id=self.uuid_factory(),
@@ -366,4 +397,6 @@ class AeternaSetupService:
 
 
 def get_aeterna_setup_service() -> AeternaSetupService:
-    return AeternaSetupService()
+    return AeternaSetupService(
+        management_service=get_aeterna_management_authority_service()
+    )

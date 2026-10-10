@@ -1,0 +1,22 @@
+{
+  "fixture_version": 1,
+  "expected": "device.proof_invalid",
+  "verification_public_key": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc",
+  "envelope": {
+    "protocol_version": 1,
+    "signed": {
+      "account_id": "00000000-0000-4000-8000-000000000020",
+      "canonicalization": "jcs-rfc8785",
+      "device_id": "00000000-0000-4000-8000-000000000003",
+      "protocol_version": 1,
+      "recovery_id": "00000000-0000-4000-8000-000000000041",
+      "request_id": "00000000-0000-4000-8000-000000000212",
+      "signature_version": 1,
+      "vault_id": "00000000-0000-4000-8000-000000000042",
+      "wrapper_digest": "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY",
+      "domain": "aeterna.recipient-recovery.invalid.v1",
+      "operation": "recovery_custody.challenge"
+    },
+    "signature": "--OqN2mV3w08Biu3ipqNq1uHDua5rFwiQlvcFf2alATauDp9tI7s3IDCEqLsnAjWPXFJiGRXkcAudXJjN_-UAQ"
+  }
+}

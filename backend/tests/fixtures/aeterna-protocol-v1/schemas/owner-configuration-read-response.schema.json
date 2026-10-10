@@ -24,6 +24,12 @@
           "maxLength": 254,
           "x-aeterna-max-utf8-bytes": 254
         },
+        "management_email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 254,
+          "x-aeterna-max-utf8-bytes": 254
+        },
         "contacts": {
           "type": "array",
           "maxItems": 10,
@@ -45,7 +51,7 @@
           }
         }
       },
-      "required": ["account_id", "owner_email", "contacts"]
+      "required": ["account_id", "owner_email", "management_email", "contacts"]
     }
   },
   "required": ["protocol_version", "request_id", "data"]

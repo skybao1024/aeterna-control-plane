@@ -42,6 +42,7 @@ class AccountChallengeRequest(ClosedModel):
     request_id: UuidString
     email: Annotated[str, Field(min_length=3, max_length=254)]
     purpose: ChallengePurpose
+    account_id: Optional[UuidString] = None
     binding_id: Optional[UuidString] = None
 
     @model_validator(mode="after")
@@ -50,6 +51,8 @@ class AccountChallengeRequest(ClosedModel):
             "device_binding_cancellation",
             "device_binding_delayed_confirmation",
         }
+        if self.account_id is not None and self.purpose != "device_binding":
+            raise ValueError("account_id requires device_binding purpose")
         if binding_scoped != (self.binding_id is not None):
             raise ValueError("binding_id does not match the challenge purpose")
         return self

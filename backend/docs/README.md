@@ -13,6 +13,9 @@ public client protocol.
 - [ADR 0003: Contact consent and email delivery boundary](./architecture/adr/0003-contact-consent-and-email-delivery-boundary.md)
 - [ADR 0004: Delayed recovery KMS and claim boundary](./architecture/adr/0004-delayed-recovery-kms-and-claim-boundary.md)
 - [ADR 0005: Production identity KMS envelope](./architecture/adr/0005-production-identity-kms-envelope.md)
+- [ADR 0006: Recipient Vault rotation and local custody](./architecture/adr/0006-recipient-vault-rotation-and-custody.md)
+- [ADR 0007: Custody freshness and recipient management](./architecture/adr/0007-custody-freshness-and-recipient-management.md)
+- [ADR 0008: Signed SRS retrieval and legacy retirement](./architecture/adr/0008-signed-srs-retrieval-and-legacy-retirement.md)
 
 ## API
 

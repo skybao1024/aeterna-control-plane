@@ -17,6 +17,8 @@ from app.services.common.aeterna_email_adapter import (
 
 logger = logging.getLogger("email_service")
 
+EMAIL_APP_NAME = "Aeterna Relay"
+
 TEMPLATES_DIR = Path(__file__).parent.parent.parent.parent / "resources" / "emails"
 jinja_env = Environment(
     loader=FileSystemLoader(str(TEMPLATES_DIR)),
@@ -155,11 +157,12 @@ class EmailService:
             to_emails=email,
             template_name="auth/verification.html",
             template_params={
+                "app_name": EMAIL_APP_NAME,
                 "first_name": first_name,
                 "verification_code": verification_code,
                 "expires_in_minutes": expires_in_minutes,
             },
-            subject="Verify your Aeterna email address",
+            subject=f"Verify your {EMAIL_APP_NAME} email address",
         )
 
 

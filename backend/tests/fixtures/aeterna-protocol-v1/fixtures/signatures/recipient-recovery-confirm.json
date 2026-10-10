@@ -1,0 +1,24 @@
+{
+  "fixture_version": 1,
+  "seed": "ERERERERERERERERERERERERERERERERERERERERERE",
+  "public_key": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc",
+  "canonical_bytes": "eyJhY2NvdW50X2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDIwIiwiY2Fub25pY2FsaXphdGlvbiI6Impjcy1yZmM4Nzg1IiwiZGV2aWNlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAzIiwiZG9tYWluIjoiYWV0ZXJuYS5yZWNpcGllbnQtcmVjb3ZlcnkuY29uZmlybS52MSIsImVyY19jb21taXRtZW50IjoiVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVSIsIm9wZXJhdGlvbiI6InJlY2lwaWVudF9yZWNvdmVyeS5jb25maXJtIiwicHJvdG9jb2xfdmVyc2lvbiI6MSwicmVjb3ZlcnlfaWQiOiIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwNDEiLCJyZXF1ZXN0X2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMjAzIiwicm90YXRpb25faWQiOiIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAyMDEiLCJzaWduYXR1cmVfdmVyc2lvbiI6MSwidGFyZ2V0X3JlY292ZXJ5X2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMjEwIiwidGFyZ2V0X3dyYXBwZXJfZGlnZXN0IjoiZDNkM2QzZDNkM2QzZDNkM2QzZDNkM2QzZDNkM2QzZDNkM2QzZDNkM2QzYyIsInZhdWx0X2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDQyIiwid3JhcHBlcl9kaWdlc3QiOiJabVptWm1abVptWm1abVptWm1abVptWm1abVptWm1abVptWm1abVptWm1ZIn0",
+  "signature": "NjbcoiD-CryV3_pWuFnrbKifeXVAfKMpaO4VgkyFB7DfL8AZS9AXFN0UFoSIYMPC3ky0vBw3GZG6ADfZrNipAw",
+  "document": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "canonicalization": "jcs-rfc8785",
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "protocol_version": 1,
+    "recovery_id": "00000000-0000-4000-8000-000000000041",
+    "request_id": "00000000-0000-4000-8000-000000000203",
+    "signature_version": 1,
+    "vault_id": "00000000-0000-4000-8000-000000000042",
+    "wrapper_digest": "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY",
+    "rotation_id": "00000000-0000-4000-8000-000000000201",
+    "domain": "aeterna.recipient-recovery.confirm.v1",
+    "operation": "recipient_recovery.confirm",
+    "target_recovery_id": "00000000-0000-4000-8000-000000000210",
+    "erc_commitment": "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVU",
+    "target_wrapper_digest": "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3c"
+  }
+}

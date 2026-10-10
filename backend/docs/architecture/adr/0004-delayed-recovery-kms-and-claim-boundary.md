@@ -1,6 +1,7 @@
 # ADR 0004: Delayed recovery KMS and claim boundary
 
 - Status: Accepted
+- Legacy contact claims and unsigned retrieval superseded by [ADR 0008](./0008-signed-srs-retrieval-and-legacy-retirement.md)
 - Date: 2026-09-27
 - Scope: I13 encrypted SRS records, release grants, contact claims, and alerts
 - Governing decision: public Aeterna ADR 0014
