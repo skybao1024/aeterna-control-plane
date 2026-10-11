@@ -63,6 +63,7 @@ services:
     volumes:
       - backend-logs:/app/logs
       - identity-keys:/app/identity-keys:ro
+      - recovery-provisioner-socket:/app/recovery-provisioner:ro
     networks:
       - app-network
     depends_on:
@@ -80,6 +81,36 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+
+  recovery-provisioner:
+    image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:${IMAGE_TAG:-local}
+    build: *backend-build
+    profiles:
+      - recovery-kms
+    restart: unless-stopped
+    command: python -m scripts.serve_recovery_provisioner
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      ENV: ${ENV:-production}
+      AETERNA_RECOVERY_KEY_PROVIDER: ${AETERNA_RECOVERY_KEY_PROVIDER:-disabled}
+      AETERNA_RECOVERY_KMS_ENABLED: ${AETERNA_RECOVERY_KMS_ENABLED:-false}
+      AETERNA_RECOVERY_KMS_REGION: ${AETERNA_RECOVERY_KMS_REGION:-ap-southeast-1}
+      AETERNA_RECOVERY_KMS_KEY_ARN: ${AETERNA_RECOVERY_KMS_KEY_ARN:-}
+      AETERNA_RECOVERY_PROVISIONER_SOCKET: ${AETERNA_RECOVERY_PROVISIONER_SOCKET:-/app/recovery-provisioner/provisioner.sock}
+    volumes:
+      - recovery-provisioner-socket:/app/recovery-provisioner
+    networks:
+      - recovery-egress
+    healthcheck:
+      test: ["CMD", "python", "-m", "scripts.check_recovery_provisioner"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   celery-worker:
     image: ${COMPOSE_PROJECT_NAME:-aeterna-control-plane}-backend:${IMAGE_TAG:-local}
@@ -210,6 +241,7 @@ services:
 
 volumes:
   identity-keys:
+  recovery-provisioner-socket:
   postgres-data:
   redis-data:
   backend-logs:
@@ -217,4 +249,6 @@ volumes:
 
 networks:
   app-network:
+    driver: bridge
+  recovery-egress:
     driver: bridge

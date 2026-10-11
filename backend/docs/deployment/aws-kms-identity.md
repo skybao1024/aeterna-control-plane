@@ -165,8 +165,12 @@ For the managed CI/CD host, these public controls can be set in the root-owned
 `/etc/aeterna/deployment.conf`; the release wrapper exports them into the
 production Compose services. Install the updated `deployment/ssh-release.sh`
 before the first shared-key release. Runtime credentials stay in their external
-profiles. For an operator-run Compose deployment, supply the same controls
-through the process environment or private runtime configuration.
+profiles. Recovery provisioning credentials use the separate
+`/etc/aeterna/aws-recovery-provisioner` directory and
+`aeterna-recovery-provisioner` profile described in
+[the recovery guide](./aws-kms-recovery.md); they must never be added to the
+runtime profile. For an operator-run Compose deployment, supply the same public
+controls through the process environment or private runtime configuration.
 
 For an operator-run check that explicitly supplies the same recovery ARN, add
 `--recovery-key-arn '<EXISTING_IDENTITY_KEY_ARN>' --allow-shared-key --check` to

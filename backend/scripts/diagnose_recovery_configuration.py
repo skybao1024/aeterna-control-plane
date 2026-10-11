@@ -23,11 +23,13 @@ SINGLE_REGION_KEY_ARN = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
+DEFAULT_PROVISIONER_SOCKET = "/app/recovery-provisioner/provisioner.sock"
 RECOVERY_CONTROLS = (
     "AETERNA_RECOVERY_KEY_PROVIDER",
     "AETERNA_RECOVERY_KMS_ENABLED",
     "AETERNA_RECOVERY_KMS_REGION",
     "AETERNA_RECOVERY_KMS_KEY_ARN",
+    "AETERNA_RECOVERY_PROVISIONER_SOCKET",
 )
 
 
@@ -47,6 +49,7 @@ class RecoveryConfiguration:
     enabled_value_valid: bool
     region: str
     key_arn: str
+    provisioner_socket: str
     supplied_controls: frozenset[str]
 
 
@@ -62,6 +65,7 @@ def configuration_from_environment(
         in {"false", "0", "no", "off", "f", "n", "true", "1", "yes", "on", "t", "y"},
         region=environment.get("AETERNA_RECOVERY_KMS_REGION", "ap-southeast-1"),
         key_arn=environment.get("AETERNA_RECOVERY_KMS_KEY_ARN", ""),
+        provisioner_socket=environment.get("AETERNA_RECOVERY_PROVISIONER_SOCKET", ""),
         supplied_controls=frozenset(
             name for name in RECOVERY_CONTROLS if name in environment
         ),
@@ -131,6 +135,10 @@ def diagnose(
         "key_arn_configured": bool(configuration.key_arn),
         "key_arn_valid": SINGLE_REGION_KEY_ARN.fullmatch(configuration.key_arn)
         is not None,
+        "provisioner_socket_configured": bool(configuration.provisioner_socket),
+        "provisioner_socket_valid": (
+            configuration.provisioner_socket == DEFAULT_PROVISIONER_SOCKET
+        ),
     }
     status = "recovery_configuration_invalid"
     if len(configuration.supplied_controls) != len(RECOVERY_CONTROLS):
@@ -143,10 +151,11 @@ def diagnose(
             and configuration.kms_enabled
             and checks["region_supported"]
             and checks["key_arn_valid"]
+            and checks["provisioner_socket_valid"]
         ):
             status = "recovery_configured_not_probed"
     return {
-        "diagnostic_version": 1,
+        "diagnostic_version": 2,
         "configuration_controls_supplied": len(configuration.supplied_controls),
         "status": status,
         "checks": checks,
@@ -170,7 +179,7 @@ def main(
         try:
             parser.parse_args(argv)
         except DiagnosticArgumentError:
-            print(json.dumps({"diagnostic_version": 1, "status": "invalid_arguments"}))
+            print(json.dumps({"diagnostic_version": 2, "status": "invalid_arguments"}))
             return 2
         try:
             report = diagnose(
@@ -179,7 +188,7 @@ def main(
                 )
             )
         except Exception:
-            report = {"diagnostic_version": 1, "status": "diagnostic_unavailable"}
+            report = {"diagnostic_version": 2, "status": "diagnostic_unavailable"}
         print(json.dumps(report, sort_keys=True))
         return 0 if report["status"] == "recovery_configured_not_probed" else 1
     finally:

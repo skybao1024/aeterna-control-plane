@@ -41,6 +41,10 @@ services:
       - --proxy-headers
       - --forwarded-allow-ips=*
     logging: *service-logging
+  recovery-provisioner:
+    mem_limit: 128m
+    cpus: 0.25
+    logging: *service-logging
   celery-worker:
     mem_limit: 320m
     cpus: 0.75

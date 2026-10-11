@@ -14,11 +14,29 @@ x-aws-directory: &aws-directory
   bind:
     create_host_path: false
 
+x-recovery-provision-aws-profiles: &recovery-provision-aws-profiles
+  AWS_PROFILE: ${AETERNA_RECOVERY_PROVISION_AWS_PROFILE:-aeterna-recovery-provisioner}
+  AWS_CONFIG_FILE: /home/app/.aws/config
+  AWS_SHARED_CREDENTIALS_FILE: /home/app/.aws/credentials
+  AWS_EC2_METADATA_DISABLED: "true"
+
+x-recovery-provision-aws-directory: &recovery-provision-aws-directory
+  type: bind
+  source: ${AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY:-/etc/aeterna/aws-recovery-provisioner}
+  target: /home/app/.aws
+  read_only: true
+  bind:
+    create_host_path: false
+
 services:
   backend:
     environment: *aws-profiles
     volumes:
       - *aws-directory
+  recovery-provisioner:
+    environment: *recovery-provision-aws-profiles
+    volumes:
+      - *recovery-provision-aws-directory
   celery-worker:
     environment: *aws-profiles
     volumes:

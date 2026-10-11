@@ -43,9 +43,11 @@ from app.schemas.client.aeterna_recovery import (
 )
 from app.services.common.aeterna_recovery_key import (
     KMS_CONTEXT_VERSION,
-    RecoveryKeyProvider,
+    RecoveryClaimProvider,
     RecoveryKeyUnavailable,
-    get_recovery_key_provider,
+    RecoveryProvisionProvider,
+    get_recovery_claim_provider,
+    get_recovery_provision_provider,
     recovery_encryption_context,
 )
 from app.services.common.aeterna_security import (
@@ -91,9 +93,11 @@ class AeternaRecoveryService:
         self,
         *,
         provision_provider: Callable[
-            [], RecoveryKeyProvider
-        ] = get_recovery_key_provider,
-        claim_provider: Callable[[], RecoveryKeyProvider] = get_recovery_key_provider,
+            [], RecoveryProvisionProvider
+        ] = get_recovery_provision_provider,
+        claim_provider: Callable[
+            [], RecoveryClaimProvider
+        ] = get_recovery_claim_provider,
         identity_key_provider: Callable[[], AeternaIdentityKeys] = get_identity_keys,
         clock: Callable[[], datetime] = utc_now,
         uuid_factory: Callable[[], uuid.UUID] = uuid.uuid4,

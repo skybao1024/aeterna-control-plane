@@ -1,8 +1,10 @@
 """Unit evidence for the single-Region recovery KMS boundary."""
 
 import base64
+import json
 import uuid
 
+import httpx
 import pytest
 
 from app.core.config import settings
@@ -10,6 +12,7 @@ from app.services.common.aeterna_recovery_key import (
     AwsKmsRecoveryKeyProvider,
     InMemoryRecoveryKeyProvider,
     RecoveryKeyUnavailable,
+    UnixSocketRecoveryProvisionProvider,
     get_recovery_key_provider,
     recovery_encryption_context,
     validate_recovery_key_configuration,
@@ -104,6 +107,83 @@ def test_key_and_context_substitution_and_malformed_provider_results_fail_closed
         provider.generate_srs(context())
 
 
+def test_providers_reject_non_exact_context_before_calling_kms():
+    client = FakeKmsClient()
+    provider = AwsKmsRecoveryKeyProvider(
+        region="ap-southeast-1", key_arn=KEY_ARN, client=client
+    )
+    invalid_context = {**context(), "unexpected": "value"}
+    with pytest.raises(RecoveryKeyUnavailable):
+        provider.generate_srs(invalid_context)
+    with pytest.raises(RecoveryKeyUnavailable):
+        provider.decrypt_srs(client.ciphertext, KEY_ARN, invalid_context)
+    assert client.generate_calls == []
+    assert client.decrypt_calls == []
+
+
+def test_unix_socket_provisioner_validates_an_exact_response_boundary():
+    expected_context = context()
+    plaintext = bytes([0x55]) * 32
+    ciphertext = bytes([0x66]) * 96
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/generate"
+        assert json.loads(request.content) == {"context": expected_context}
+        return httpx.Response(
+            200,
+            json={
+                "plaintext": base64.urlsafe_b64encode(plaintext)
+                .rstrip(b"=")
+                .decode("ascii"),
+                "ciphertext": base64.b64encode(ciphertext).decode("ascii"),
+                "key_arn": KEY_ARN,
+                "key_material_id": KEY_ARN,
+            },
+        )
+
+    provider = UnixSocketRecoveryProvisionProvider(
+        socket_path="/app/recovery-provisioner/provisioner.sock",
+        key_arn=KEY_ARN,
+        transport=httpx.MockTransport(handler),
+    )
+    envelope = provider.generate_srs(expected_context)
+    assert envelope.plaintext == bytearray(plaintext)
+    assert envelope.ciphertext == ciphertext
+    assert envelope.key_arn == KEY_ARN
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {
+            "plaintext": "invalid",
+            "ciphertext": "invalid",
+            "key_arn": KEY_ARN,
+            "key_material_id": KEY_ARN,
+        },
+        {
+            "plaintext": base64.urlsafe_b64encode(bytes([0x55]) * 32)
+            .rstrip(b"=")
+            .decode("ascii"),
+            "ciphertext": base64.b64encode(bytes([0x66]) * 96).decode("ascii"),
+            "key_arn": KEY_ARN,
+            "key_material_id": "wrong-key",
+        },
+    ],
+)
+def test_unix_socket_provisioner_rejects_malformed_responses(payload):
+    provider = UnixSocketRecoveryProvisionProvider(
+        socket_path="/app/recovery-provisioner/provisioner.sock",
+        key_arn=KEY_ARN,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json=payload)
+        ),
+    )
+    with pytest.raises(RecoveryKeyUnavailable):
+        provider.generate_srs(context())
+
+
 def test_configuration_accepts_only_the_approved_disabled_or_singapore_boundary(
     monkeypatch,
 ):
@@ -113,11 +193,21 @@ def test_configuration_accepts_only_the_approved_disabled_or_singapore_boundary(
 
     monkeypatch.setattr(settings, "AETERNA_RECOVERY_KEY_PROVIDER", "aws-kms")
     monkeypatch.setattr(settings, "AETERNA_RECOVERY_KMS_ENABLED", True)
+    monkeypatch.setattr(settings, "ENV", "production")
     monkeypatch.setattr(settings, "AETERNA_RECOVERY_KMS_REGION", "ap-southeast-1")
     monkeypatch.setattr(settings, "AETERNA_RECOVERY_KMS_KEY_ARN", KEY_ARN)
     validate_recovery_key_configuration()
 
     monkeypatch.setattr(settings, "AETERNA_RECOVERY_KMS_REGION", "ap-southeast-2")
+    with pytest.raises(RecoveryKeyUnavailable):
+        validate_recovery_key_configuration()
+
+    monkeypatch.setattr(settings, "AETERNA_RECOVERY_KMS_KEY_ARN", KEY_ARN)
+    monkeypatch.setattr(
+        settings,
+        "AETERNA_RECOVERY_PROVISIONER_SOCKET",
+        "/app/recovery-provisioner/alternate.sock",
+    )
     with pytest.raises(RecoveryKeyUnavailable):
         validate_recovery_key_configuration()
 

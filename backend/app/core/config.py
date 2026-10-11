@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     AETERNA_RECOVERY_KMS_ENABLED: bool = False
     AETERNA_RECOVERY_KMS_REGION: str = "ap-southeast-1"
     AETERNA_RECOVERY_KMS_KEY_ARN: str = ""
+    AETERNA_RECOVERY_PROVISIONER_SOCKET: str = (
+        "/app/recovery-provisioner/provisioner.sock"
+    )
     AETERNA_RECOVERY_LOCAL_TEST_KEY: str = ""
 
     # Legacy compatibility fields; no application mail uses the Brevo provider.

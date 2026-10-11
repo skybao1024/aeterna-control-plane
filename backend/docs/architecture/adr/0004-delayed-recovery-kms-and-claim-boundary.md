@@ -55,10 +55,12 @@ deployment, and production enablement remain separate launch actions.
 7. Recovery responses use `Cache-Control: no-store`. Logs, audit, fixtures,
    errors, and persisted email records contain no SRS, ERC, claim bearer, OTP,
    rendered body, or complete address.
-8. The code has distinct provision and claim provider dependencies so a later
-   production deployment can use `GenerateDataKey`-only and `Decrypt`-only
-   workload roles. The current disabled local application is not evidence that
-   those production IAM roles have been provisioned or tested.
+8. The code and deployment use distinct provision and claim workloads. The main
+   backend uses a `Decrypt`-only runtime identity. A minimal provisioner process
+   uses a `GenerateDataKey`-only identity and exposes only a private Unix socket
+   to the backend. The identities have separate external credential profiles;
+   neither workload mounts the other profile. Disabled local configuration is
+   not evidence that the production IAM identities have been tested.
 9. The personal-project MVP has no Multi-Region KMS replica, CloudHSM/custom key
    store, automatic Region failover, automatic rotation, recovery-specific
    cross-Region backup, or plaintext application fallback.

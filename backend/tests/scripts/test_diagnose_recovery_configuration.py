@@ -18,6 +18,9 @@ ENVIRONMENT = {
     "AETERNA_RECOVERY_KMS_ENABLED": "true",
     "AETERNA_RECOVERY_KMS_REGION": "ap-southeast-1",
     "AETERNA_RECOVERY_KMS_KEY_ARN": KEY_ARN,
+    "AETERNA_RECOVERY_PROVISIONER_SOCKET": (
+        "/app/recovery-provisioner/provisioner.sock"
+    ),
 }
 CONFIGURATION = diagnostic.configuration_from_environment(ENVIRONMENT)
 FEATURES = {"management_email_required": True, "schema_modules_available": 3}
@@ -42,7 +45,10 @@ def test_partial_process_controls_do_not_establish_runtime_configuration(missing
         contract_features=FEATURES,
     )
     assert report["status"] == "configuration_controls_not_supplied"
-    assert report["configuration_controls_supplied"] == 3
+    assert (
+        report["configuration_controls_supplied"]
+        == len(diagnostic.RECOVERY_CONTROLS) - 1
+    )
 
 
 def test_explicit_disabled_configuration_is_reported_without_provider_construction():
@@ -58,7 +64,9 @@ def test_explicit_disabled_configuration_is_reported_without_provider_constructi
         contract_features=FEATURES,
     )
     assert report["status"] == "recovery_provider_disabled"
-    assert report["configuration_controls_supplied"] == 4
+    assert report["configuration_controls_supplied"] == len(
+        diagnostic.RECOVERY_CONTROLS
+    )
     assert report["checks"]["kms_enabled"] is False
 
 
@@ -81,6 +89,9 @@ def test_configured_status_does_not_claim_aws_readiness_or_expose_key_identifier
         {"key_arn": "alias/synthetic-key"},
         {"key_arn": KEY_ARN.replace("00000000-", "mrk-")},
         {"key_arn": ""},
+        {"provisioner_socket": "relative/provisioner.sock"},
+        {"provisioner_socket": "/app/../runtime/provisioner.sock"},
+        {"provisioner_socket": "/app/recovery-provisioner/alternate.sock"},
     ],
 )
 def test_invalid_configuration_returns_only_sanitized_flags(changes):

@@ -9,6 +9,7 @@ BASE_FILE="docker-compose.yml"
 DEV_FILE="docker-compose.dev.yml"
 PROD_FILE="docker-compose.prod.yml"
 ENV_FILE_PATH="${ENV_FILE:-.env}"
+RECOVERY_KMS_ENABLED=0
 
 print_info() {
     printf '[INFO] %s\n' "$1"
@@ -115,10 +116,31 @@ set_compose_args() {
     if [[ "${AETERNA_USE_RELEASE_IMAGES:-0}" == "1" ]]; then
         COMPOSE_ARGS+=(-f docker-compose.release.yml)
     fi
+
+    RECOVERY_KMS_ENABLED=0
+    local recovery_enabled
+    recovery_enabled="$(get_config_value AETERNA_RECOVERY_KMS_ENABLED false)"
+    recovery_enabled="$(printf '%s' "$recovery_enabled" | tr '[:upper:]' '[:lower:]')"
+    case "$recovery_enabled" in
+        true|1|yes|on|t|y)
+            RECOVERY_KMS_ENABLED=1
+            ;;
+        false|0|no|off|f|n)
+            ;;
+        *)
+            print_error "Recovery KMS enablement must be a boolean value."
+            exit 1
+            ;;
+    esac
 }
 
 compose() {
-    docker compose --env-file "$ENV_FILE_PATH" "${COMPOSE_ARGS[@]}" "$@"
+    if [[ "$RECOVERY_KMS_ENABLED" == "1" ]]; then
+        docker compose --env-file "$ENV_FILE_PATH" "${COMPOSE_ARGS[@]}" \
+            --profile recovery-kms "$@"
+    else
+        docker compose --env-file "$ENV_FILE_PATH" "${COMPOSE_ARGS[@]}" "$@"
+    fi
 }
 
 start_environment() {
@@ -159,11 +181,34 @@ release_environment() {
     : "${AETERNA_IDENTITY_KMS_REGION:?Set the public KMS region}"
     : "${AETERNA_IDENTITY_KMS_KEY_ARN:?Set the public KMS key ARN}"
     : "${AETERNA_BACKUP_DIRECTORY:?Set the external backup directory}"
+    : "${AWS_CONFIG_DIRECTORY:?Set the runtime AWS profile directory}"
+    export AETERNA_AWS_PROFILE="${AETERNA_AWS_PROFILE:-aeterna-runtime}"
 
     export IMAGE_TAG="$revision"
     export AETERNA_USE_RELEASE_IMAGES=1
     export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-aeterna-control-plane}"
     set_compose_args prod
+    if [[ "$RECOVERY_KMS_ENABLED" == "1" ]]; then
+        : "${AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY:?Set the recovery provisioner AWS profile directory}"
+        export AETERNA_RECOVERY_PROVISION_AWS_PROFILE="${AETERNA_RECOVERY_PROVISION_AWS_PROFILE:-aeterna-recovery-provisioner}"
+        if [[ "$AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY" == "$AWS_CONFIG_DIRECTORY" || \
+            "$AETERNA_RECOVERY_PROVISION_AWS_PROFILE" == "$AETERNA_AWS_PROFILE" ]]; then
+            print_error "Recovery provisioner and runtime AWS profiles must be distinct."
+            exit 1
+        fi
+        if [[ ! -d "$AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY" || \
+            -L "$AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY" ]]; then
+            print_error "Recovery provisioner AWS profile directory is unavailable."
+            exit 1
+        fi
+        for profile_file in config credentials; do
+            if [[ ! -f "$AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY/$profile_file" || \
+                -L "$AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY/$profile_file" ]]; then
+                print_error "Recovery provisioner AWS profile is incomplete."
+                exit 1
+            fi
+        done
+    fi
     compose config --quiet
 
     local database_existed=0
@@ -174,7 +219,10 @@ release_environment() {
     compose up -d --no-build --wait --wait-timeout 180 postgres redis
 
     print_info "Pausing application traffic and scheduled work..."
-    compose stop celery-beat celery-worker frontend backend
+    local application_services=(
+        celery-beat celery-worker frontend backend recovery-provisioner
+    )
+    compose stop "${application_services[@]}"
 
     local backup_directory
     backup_directory="$(mktemp -d "$AETERNA_BACKUP_DIRECTORY/$(date -u +%Y%m%dT%H%M%SZ)-$revision.XXXXXXXX")"
@@ -204,6 +252,9 @@ release_environment() {
     print_info "Applying migrations before starting the application..."
     compose run --rm --no-deps backend alembic upgrade head
     compose up -d --no-build --pull never --remove-orphans --wait --wait-timeout 300
+    if [[ "$RECOVERY_KMS_ENABLED" == "1" ]]; then
+        compose exec -T backend python -m scripts.check_recovery_provisioner
+    fi
 
     local release_status_directory diagnostic_file diagnostic_tmp diagnostic_exit
     release_status_directory="$(dirname "$AETERNA_BACKUP_DIRECTORY")/release-status"
@@ -285,8 +336,14 @@ main() {
                 exit 1
             fi
             set_compose_args dev
-            exec docker compose --env-file "$ENV_FILE_PATH" \
-                "${COMPOSE_ARGS[@]}" exec -T backend python scripts/postgres_mcp.py
+            if [[ "$RECOVERY_KMS_ENABLED" == "1" ]]; then
+                exec docker compose --env-file "$ENV_FILE_PATH" \
+                    "${COMPOSE_ARGS[@]}" --profile recovery-kms \
+                    exec -T backend python scripts/postgres_mcp.py
+            else
+                exec docker compose --env-file "$ENV_FILE_PATH" \
+                    "${COMPOSE_ARGS[@]}" exec -T backend python scripts/postgres_mcp.py
+            fi
             ;;
         monitoring)
             ensure_env

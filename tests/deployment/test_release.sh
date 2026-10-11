@@ -5,7 +5,10 @@ repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 test_directory="$(mktemp -d "${TMPDIR:-/tmp}/aeterna-release-test.XXXXXXXX")"
 trap 'rm -rf "$test_directory"' EXIT
 mkdir -p "$test_directory/bin" "$test_directory/backups"
+mkdir -p "$test_directory/recovery-provisioner-profile"
 touch "$test_directory/runtime.env.example"
+touch "$test_directory/recovery-provisioner-profile/config"
+touch "$test_directory/recovery-provisioner-profile/credentials"
 
 cat > "$test_directory/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
@@ -30,9 +33,13 @@ if [[ "$*" == *'alembic upgrade head'* ]]; then
     [[ "${TEST_MIGRATION_FAILURE:-0}" == "0" ]] || exit 1
 fi
 if [[ "$*" == *'python -m scripts.diagnose_recovery_configuration'* ]]; then
-    printf '{"diagnostic_version":1,"status":"%s"}\n' \
+    printf '{"diagnostic_version":2,"status":"%s"}\n' \
         "${TEST_DIAGNOSTIC_STATUS:-recovery_configured_not_probed}"
     exit "${TEST_DIAGNOSTIC_EXIT:-0}"
+fi
+if [[ "$*" == *'python -m scripts.check_recovery_provisioner'* ]]; then
+    printf 'recovery_provisioner_healthy\n'
+    exit "${TEST_PROVISIONER_HEALTH_EXIT:-0}"
 fi
 MOCK
 chmod 700 "$test_directory/bin/docker"
@@ -55,10 +62,17 @@ reset_case() {
     export TEST_BACKUP_FAILURE=0 TEST_MIGRATION_FAILURE=0
     export TEST_DIAGNOSTIC_EXIT=0
     export TEST_DIAGNOSTIC_STATUS=recovery_configured_not_probed
+    export TEST_PROVISIONER_HEALTH_EXIT=0
+    export AETERNA_RECOVERY_KMS_ENABLED=false
+    unset AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY
 }
 
 reset_case
-bash "$repository/deploy.sh" release "$revision" > "$test_directory/result.log" 2>&1
+if ! bash "$repository/deploy.sh" release "$revision" \
+    > "$test_directory/result.log" 2>&1; then
+    sed -n '1,120p' "$test_directory/result.log" >&2
+    exit 1
+fi
 awk '/ stop celery-beat/ { stop=NR } /pg_dump/ { backup=NR } /cp \/app\/identity-keys/ { envelope=NR } /alembic upgrade head/ { migration=NR } /--pull never/ { start=NR } END { exit !(stop && stop < backup && backup < envelope && envelope < migration && migration < start) }' "$TEST_COMMAND_LOG"
 awk '/identity-setup --region/ && /profile=aeterna-identity-provisioner directory=\/etc\/aeterna\/aws-identity-provisioner/ { found=1 } END { exit !found }' "$TEST_COMMAND_LOG"
 grep -q '"status":"recovery_configured_not_probed"' \
@@ -102,4 +116,29 @@ if bash "$repository/deploy.sh" release invalid > "$test_directory/result.log" 2
     exit 1
 fi
 awk '/ volume inspect| up | stop | run / { exit 1 }' "$TEST_COMMAND_LOG"
-printf 'Seven release safety checks passed.\n'
+
+reset_case
+export TEST_ENVELOPE_EXISTS=1 AETERNA_RECOVERY_KMS_ENABLED=true
+export AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY="$test_directory/recovery-provisioner-profile"
+bash "$repository/deploy.sh" release "$revision" > "$test_directory/result.log" 2>&1
+awk '/--profile recovery-kms/ { profile=1 } /python -m scripts.check_recovery_provisioner/ { health=1 } END { exit !(profile && health) }' "$TEST_COMMAND_LOG"
+
+reset_case
+export AETERNA_RECOVERY_KMS_ENABLED=true
+export AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY="$test_directory/missing-profile"
+if bash "$repository/deploy.sh" release "$revision" > "$test_directory/result.log" 2>&1; then
+    exit 1
+fi
+awk '/ volume inspect| up | stop | run / { exit 1 }' "$TEST_COMMAND_LOG"
+
+reset_case
+export AETERNA_RECOVERY_KMS_ENABLED=true
+export AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY="$test_directory/recovery-provisioner-profile"
+export AWS_CONFIG_DIRECTORY="$test_directory/recovery-provisioner-profile"
+if bash "$repository/deploy.sh" release "$revision" > "$test_directory/result.log" 2>&1; then
+    exit 1
+fi
+awk '/ volume inspect| up | stop | run / { exit 1 }' "$TEST_COMMAND_LOG"
+export AWS_CONFIG_DIRECTORY=/etc/aeterna/aws-runtime
+
+printf 'Ten release safety checks passed.\n'

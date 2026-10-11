@@ -1,6 +1,10 @@
 x-kms-environment: &kms-environment
   AETERNA_KMS_ALLOW_SHARED_KEY: ${AETERNA_KMS_ALLOW_SHARED_KEY:-false}
+  AETERNA_RECOVERY_KEY_PROVIDER: ${AETERNA_RECOVERY_KEY_PROVIDER:-disabled}
+  AETERNA_RECOVERY_KMS_ENABLED: ${AETERNA_RECOVERY_KMS_ENABLED:-false}
+  AETERNA_RECOVERY_KMS_REGION: ${AETERNA_RECOVERY_KMS_REGION:-ap-southeast-1}
   AETERNA_RECOVERY_KMS_KEY_ARN: ${AETERNA_RECOVERY_KMS_KEY_ARN:-}
+  AETERNA_RECOVERY_PROVISIONER_SOCKET: ${AETERNA_RECOVERY_PROVISIONER_SOCKET:-/app/recovery-provisioner/provisioner.sock}
 
 services:
   backend:
@@ -14,6 +18,10 @@ services:
       REDIS_PORT: 6379
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8001}:${API_PORT:-8001}"
+
+  recovery-provisioner:
+    environment:
+      ENV: production
 
   celery-worker:
     environment:
