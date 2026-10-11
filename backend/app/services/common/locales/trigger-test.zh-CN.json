@@ -1,0 +1,10 @@
+{
+  "subject": "[测试] Aeterna 失联触发测试",
+  "intro": "这是您启动的隔离测试，仅涉及示例资料，不是实际失联通知。",
+  "warningCode": "测试预警验证码",
+  "recipientCode": "测试通知邮箱验证码",
+  "codeExpiry": "验证码十分钟内有效。仅在 Aeterna 的本次测试中输入。",
+  "notice": "测试已完成失联阈值和完整宽限期。请将下面的完整链接粘贴到 Aeterna 的本次测试中，主动获取邮箱验证码。",
+  "landingTitle": "Aeterna 隔离测试通知",
+  "landingBody": "此页面不会验证或使用测试链接。请打开 Aeterna Relay，返回失联触发测试，粘贴邮件中的完整链接并主动获取邮箱验证码。本次测试不授予真实资料库的访问权限。"
+}

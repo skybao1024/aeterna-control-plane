@@ -164,3 +164,39 @@ and documentation only. See the
 [SES configuration and sandbox guide](../../deployment/aws-ses.md) for the
 placeholder controls, bounded operator checks, and separately authorized live
 acceptance workflow.
+
+## Contact email language and invitation clarity (2026-10-11)
+
+The signed `contact.create` body accepts a closed `locale` (`en` or `zh-CN`),
+defaulting to English when a legacy client omits it. Signed `contact.invite` and
+`notification.test` accept the same optional field; omission preserves the
+contact's stored language. A provided null or unsupported language is invalid.
+`contact.status` and `contact.delete` retain their closed original shape and
+reject the language field. Signatures and idempotency digests cover the exact
+received document, including a provided locale; schema defaults do not alter
+legacy signed bytes.
+
+Migration `2ea8c943d6b1` adds non-null, bounded `notification_locale` with an
+English default for existing contacts and a closed database constraint. A
+locale update commits with the authorized invitation/test mutation. Deferred
+private-target invitations and delivery retries render using this stored locale;
+invalid stored values fail closed. Accepted-contact tests, recovery entry
+messages, OTPs, and recovery security notices use the same stored language.
+Owner messages remain unchanged.
+
+Fixed English and Chinese resource files now identify the inviter using the
+existing verified management mailbox and explain the encrypted local personal
+library, the recovery-contact role, accept/decline choices, mailbox verification,
+and the limits of acceptance. The structured HTML has one descriptive invitation
+action, a visible origin, and a plain-text fallback; it contains no remote assets
+or tracking and escapes dynamic text and the URL. The invitation URL carries
+only its bounded public `locale` in the query and retains the bearer in the
+fragment. The copy includes the actual UTC expiration alongside the seven-day
+creation lifetime so a delayed delivery does not claim a fresh seven-day window.
+
+These fixed explanations do not disclose any specific trigger, timing policy,
+private message, library content, location, claim link, or recovery material
+before acceptance. Consent, verification, suppression, recovery authority,
+provider effects, and delivery gates are unchanged. Apply the additive migration
+before deploying the updated backend; this change does not authorize deployment
+or a live email send.

@@ -174,6 +174,7 @@ class AeternaNotificationService:
             email_nonce=nonce,
             email_key_version=key_version,
             disclosure_mode=signed.disclosure_mode,
+            notification_locale=signed.locale,
             consent_status="NOT_REQUESTED",
         )
         db.add(contact)
@@ -252,6 +253,8 @@ class AeternaNotificationService:
             raise AeternaProtocolException(
                 400, "contact.recipient_unavailable", signed.request_id
             )
+        if signed.locale is not None:
+            contact.notification_locale = signed.locale
         await self._queue_invitation(
             db,
             keys=keys,
@@ -311,6 +314,8 @@ class AeternaNotificationService:
             recipient_lookup=contact.email_lookup,
             remote_lookup=remote_lookup,
         )
+        if signed.locale is not None:
+            contact.notification_locale = signed.locale
         event = self._queue_email_event(
             db,
             account_id=account.id,

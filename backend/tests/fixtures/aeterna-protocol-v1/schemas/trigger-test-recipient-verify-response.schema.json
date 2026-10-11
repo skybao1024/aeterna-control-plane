@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:trigger-test-recipient-verify-response",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocolVersion"
+    },
+    "request_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "view": {
+          "$ref": "trigger-test-view.schema.json"
+        },
+        "claim_token": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        },
+        "claim_expires_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        }
+      },
+      "required": ["view", "claim_token", "claim_expires_at"]
+    }
+  },
+  "required": ["protocol_version", "request_id", "data"]
+}

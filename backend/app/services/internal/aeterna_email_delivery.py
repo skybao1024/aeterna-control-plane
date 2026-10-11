@@ -12,6 +12,7 @@ from typing import Callable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.aeterna_locale import validate_notification_locale
 from app.core.config import settings
 from app.models.account_policy import AccountPolicy, AccountPolicyOutboxEvent
 from app.models.aeterna_identity import AeternaAccount
@@ -31,6 +32,10 @@ from app.models.aeterna_recovery import (
     AeternaRecoveryGrant,
     AeternaRecoveryOtpChallenge,
     AeternaRecoveryRecord,
+)
+from app.services.common.aeterna_contact_email_copy import (
+    contact_email_copy,
+    render_contact_invitation,
 )
 from app.services.common.aeterna_email_adapter import (
     AeternaEmailAdapter,
@@ -687,6 +692,7 @@ class AeternaEmailDeliveryService:
             else:
                 owner_email = await self.management.mailbox(db, keys, account)
         custom_message = ""
+        note_label = "Owner-provided note:"
         template = await db.get(AeternaNotificationTemplate, account.id)
         if event.recipient_kind == "owner":
             if owner_email is None:
@@ -727,6 +733,14 @@ class AeternaEmailDeliveryService:
         else:
             if contact is None:
                 raise RuntimeError("Contact delivery is missing its contact")
+            try:
+                locale = validate_notification_locale(contact.notification_locale)
+            except ValueError:
+                raise EmailDeliveryFailure(
+                    "contact-locale-invalid", retryable=False
+                ) from None
+            copy = contact_email_copy(locale)
+            note_label = copy.note_label
             recipient = decrypt_email(
                 keys,
                 contact.email_ciphertext,
@@ -756,23 +770,21 @@ class AeternaEmailDeliveryService:
                 )
                 action_url = (
                     f"{settings.FRONTEND_URL.rstrip('/')}/contact-invitation"
+                    f"?locale={locale}"
                     f"#token={token}"
                 )
-                subject = f"{EMAIL_APP_NAME} recovery contact invitation"
-                fixed_text = (
-                    f"An {EMAIL_APP_NAME} owner has selected this email address as a "
-                    f"recovery contact. Owner: {owner_email}\n\n"
-                    "No recovery material or private message is included. You may "
-                    "accept or decline the role using the link below.\n\n"
-                    f"{action_url}"
+                content = render_contact_invitation(
+                    locale=locale,
+                    owner_email=owner_email,
+                    action_url=action_url,
+                    expires_at=invitation.expires_at,
                 )
-                custom_message = ""
+                return AeternaEmailEnvelope(
+                    recipient, content.subject, content.text_body, content.html_body
+                )
             elif event.event_type == "contact-test":
-                subject = f"{EMAIL_APP_NAME} recovery contact delivery test"
-                fixed_text = (
-                    "This is a delivery test for a recovery-contact role that this "
-                    "email address previously accepted and verified."
-                )
+                subject = copy.test_subject
+                fixed_text = copy.test_text
                 if template is not None:
                     custom_message = decrypt_private_text(
                         keys,
@@ -795,15 +807,8 @@ class AeternaEmailDeliveryService:
                     f"{settings.FRONTEND_URL.rstrip('/')}/recovery-claim"
                     f"#token={token}"
                 )
-                subject = f"{EMAIL_APP_NAME} recovery access is available"
-                fixed_text = (
-                    "Recovery access is available to this verified recovery contact. "
-                    "Open Aeterna on the computer that holds the Vault and paste this "
-                    "email link into Emergency recovery. The app will send a separate "
-                    "mailbox verification code, valid for 10 minutes. The entry link "
-                    "can be used again while this recovery remains authorized.\n\n"
-                    f"{action_url}"
-                )
+                subject = copy.claim_subject
+                fixed_text = f"{copy.claim_text}\n\n{action_url}"
                 custom_message = ""
             elif event.event_type == "recovery-otp":
                 challenge = await db.get(
@@ -820,29 +825,25 @@ class AeternaEmailDeliveryService:
                 code = derive_recovery_otp(
                     keys, challenge.id, challenge.otp_key_version
                 )
-                subject = f"{EMAIL_APP_NAME} recovery verification code"
-                fixed_text = (
-                    "Use this one-time code to continue the delayed-recovery "
-                    f"claim: {code}\n\nThe code expires in 10 minutes."
-                )
+                subject = copy.otp_subject
+                fixed_text = copy.otp_text.format(code=code)
                 custom_message = ""
             elif event.event_type == "recovery-claimed-contact":
-                subject = f"{EMAIL_APP_NAME} recovery security notice"
-                fixed_text = (
-                    "Another verified recovery contact completed a one-time "
-                    f"recovery-secret claim for this {EMAIL_APP_NAME} account."
-                )
+                subject = copy.security_subject
+                fixed_text = copy.security_notice_text
                 custom_message = ""
             else:
                 raise RuntimeError("Unsupported contact email event type")
 
         text_body = fixed_text
         if custom_message:
-            text_body = f"{fixed_text}\n\nOwner-provided note:\n{custom_message}"
+            text_body = f"{fixed_text}\n\n{note_label}\n{custom_message}"
         html_body = "<p>" + html.escape(fixed_text).replace("\n", "<br>") + "</p>"
         if custom_message:
             html_body += (
-                "<p><strong>Owner-provided note:</strong><br>"
+                "<p><strong>"
+                + html.escape(note_label)
+                + "</strong><br>"
                 + html.escape(custom_message).replace("\n", "<br>")
                 + "</p>"
             )

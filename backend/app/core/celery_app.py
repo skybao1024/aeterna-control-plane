@@ -9,10 +9,15 @@ celery_app = Celery(
     "aeterna_control_plane",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.schedule.jobs.account_policy"],
+    include=["app.schedule.jobs.account_policy", "app.schedule.jobs.trigger_test"],
 )
 
 celery_app.conf.beat_schedule = {
+    "run-isolated-trigger-tests": {
+        "task": "app.schedule.jobs.trigger_test.run",
+        "schedule": 10.0,
+        "options": {"queue": "scheduled_tasks"},
+    },
     "scan-account-policies": {
         "task": "app.schedule.jobs.account_policy.scan",
         "schedule": 60.0,

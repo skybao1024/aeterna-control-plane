@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     AWS_SES_SNS_TOPIC_ARN: str = ""
     AWS_SES_SNS_CONFIRMATION_CAPTURE_ENABLED: bool = False
 
+    # Same service origin compiled into the native app; empty disables trigger tests.
+    AETERNA_TRIGGER_TEST_NOTICE_ORIGIN: str = ""
+
     # Aeterna I13 recovery SRS envelope boundary. AWS credentials are supplied
     # only through the standard IAM role/credential provider chain.
     AETERNA_RECOVERY_KEY_PROVIDER: str = "disabled"

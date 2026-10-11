@@ -153,3 +153,43 @@ Verification for this repair ran inside the Docker backend service:
 Frontend and native checks were unnecessary for this backend transport change:
 HTTP contracts, email templates, frontend code, and desktop code are unchanged.
 No frontend or native build was run.
+
+## Contact email language and invitation clarity (2026-10-11)
+
+Signed create requests now carry the selected `en` or `zh-CN` locale; legacy
+omission defaults to English. Signed invitation/test actions can update it,
+while omission preserves the persisted contact locale. Status/delete shapes
+remain unchanged. The additive migration is `2ea8c943d6b1`; deploy it before
+the updated backend and language-bearing clients. Existing contacts default to
+English until an authorized invitation/test action supplies another locale.
+
+Fixed bilingual invitation copy identifies the verified management mailbox
+inviter, explains the encrypted local personal library and recovery-contact
+role, states the accept/decline choices and immediate-access limitations, and
+shows the actual expiration and invitation origin. HTML provides one action and
+an escaped fallback URL without external assets or tracking. Invitation links
+carry a bounded public language query and keep the secret in the fragment. The
+pre-verification disclosure gate and consent/recovery authority are unchanged.
+Accepted-contact delivery tests, recovery links, OTPs, and security notices use
+the saved locale as well. Owner email copy remains unchanged.
+
+Docker verification passed 109 focused email/locale unit tests, 22 contact
+integration tests, and the complete 456-test backend suite. The full suite
+reported three existing Pydantic/SQLAlchemy deprecation warnings. Synthetic
+integration data used a separate temporary PostgreSQL container and fake
+providers; no real email was sent and the development database was untouched.
+Coverage includes locale validation, legacy signed omission, signed tampering,
+replay/conflict, transactional locale updates, failure preservation, deferred
+private invitations, retry rendering, database constraints, HTML escaping,
+fixed disclosure, and actual invitation expiration.
+
+Fresh migration, downgrade/re-upgrade, and Alembic metadata checks passed in
+the isolated database. Final Black and Black-compatible isort checks passed on
+all 11 changed Python files; critical Flake8 and `git diff --check` passed.
+Synthetic invitation HTML snapshots were exported for desktop/browser visual
+review. Docker subsequently became unavailable during an additional seeded
+legacy-row backfill check, so that extra check remains unverified. A final
+read-only `docker ps` check confirmed that the exact task-owned
+`aeterna-email-locale-test-postgres` container was absent; the cause was not
+established. No deployment,
+ordinary development migration, or live-delivery acceptance was performed.

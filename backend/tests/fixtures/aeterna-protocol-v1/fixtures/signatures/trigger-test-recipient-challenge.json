@@ -1,0 +1,19 @@
+{
+  "fixture_version": 1,
+  "seed": "ERERERERERERERERERERERERERERERERERERERERERE",
+  "public_key": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc",
+  "canonical_bytes": "eyJhY2NvdW50X2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwNzA1IiwiY2Fub25pY2FsaXphdGlvbiI6Impjcy1yZmM4Nzg1IiwiZGV2aWNlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwNzA2IiwiZG9tYWluIjoiYWV0ZXJuYS50cmlnZ2VyLXRlc3QucmVjaXBpZW50LWNoYWxsZW5nZS52MSIsIm5vdGljZV90b2tlbiI6IkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUEiLCJvcGVyYXRpb24iOiJ0cmlnZ2VyX3Rlc3QucmVjaXBpZW50X2NoYWxsZW5nZSIsInByb3RvY29sX3ZlcnNpb24iOjEsInJlcXVlc3RfaWQiOiIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDA3MTkiLCJzZXNzaW9uX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwNzAwIiwic2lnbmF0dXJlX3ZlcnNpb24iOjF9",
+  "signature": "qxALMfJHkqCs4wJi7BQxZSqKD7MBpG7Xb3iupIBFbVqc-PgBLHwC0itZSxa2q7WDoez0wsWAdgXwsqMlqBWbCA",
+  "document": {
+    "canonicalization": "jcs-rfc8785",
+    "domain": "aeterna.trigger-test.recipient-challenge.v1",
+    "operation": "trigger_test.recipient_challenge",
+    "protocol_version": 1,
+    "signature_version": 1,
+    "request_id": "00000000-0000-4000-8000-000000000719",
+    "account_id": "00000000-0000-4000-8000-000000000705",
+    "device_id": "00000000-0000-4000-8000-000000000706",
+    "session_id": "00000000-0000-4000-8000-000000000700",
+    "notice_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  }
+}

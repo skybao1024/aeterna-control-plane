@@ -5,6 +5,7 @@ from typing import Annotated, Literal, Optional
 
 from pydantic import Field, model_validator
 
+from app.core.aeterna_locale import NotificationLocale
 from app.schemas.client.aeterna_protocol import (
     Base64Url32,
     Base64Url64,
@@ -52,6 +53,10 @@ class ContactCreateSigned(SignedHeader):
     authorizing_device_id: UuidString
     email: Annotated[str, Field(min_length=3, max_length=254)]
     disclosure_mode: DisclosureMode
+    locale: NotificationLocale = Field(
+        default="en",
+        description="Signed contact email locale; legacy requests default to English.",
+    )
 
 
 class ContactCreateRequest(ClosedModel):
@@ -76,6 +81,13 @@ class ContactActionSigned(SignedHeader):
     account_id: UuidString
     authorizing_device_id: UuidString
     contact_id: UuidString
+    locale: Optional[NotificationLocale] = Field(
+        default=None,
+        description=(
+            "Signed email locale for invite/test only. Omission preserves the "
+            "contact's stored locale; status/delete do not accept this field."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_domain_operation_pair(self) -> "ContactActionSigned":
@@ -87,6 +99,13 @@ class ContactActionSigned(SignedHeader):
         }[self.operation]
         if self.domain != expected:
             raise ValueError("domain does not match operation")
+        if "locale" in self.model_fields_set and self.operation not in {
+            "contact.invite",
+            "notification.test",
+        }:
+            raise ValueError("locale is only supported for invite and test operations")
+        if "locale" in self.model_fields_set and self.locale is None:
+            raise ValueError("locale must be a supported language when provided")
         return self
 
 

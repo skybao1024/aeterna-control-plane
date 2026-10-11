@@ -13,7 +13,32 @@ touch "$test_directory/recovery-provisioner-profile/credentials"
 cat > "$test_directory/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
 set -eu
-printf '%s | profile=%s directory=%s\n' "$*" "${AETERNA_AWS_PROFILE:-}" "${AWS_CONFIG_DIRECTORY:-}" >> "$TEST_COMMAND_LOG"
+printf '%s | profile=%s directory=%s origin=%s\n' "$*" "${AETERNA_AWS_PROFILE:-}" "${AWS_CONFIG_DIRECTORY:-}" "${AETERNA_TRIGGER_TEST_NOTICE_ORIGIN:-}" >> "$TEST_COMMAND_LOG"
+if [[ "$1" == "image" && "$2" == "inspect" ]]; then
+    printf 'sha256:synthetic-expected-image\n'
+    exit
+fi
+if [[ "$1" == "inspect" && "$*" == *'.Config.Hostname'* ]]; then
+    printf 'synthetic-worker\n'
+    exit
+fi
+if [[ "$1" == "inspect" ]]; then
+    [[ "${TEST_IMAGE_MISMATCH:-0}" == "0" ]] || {
+        printf 'sha256:synthetic-other-image|true|healthy\n'
+        exit
+    }
+    printf 'sha256:synthetic-expected-image|true|healthy\n'
+    exit
+fi
+if [[ "$*" == *' ps -q '* ]]; then
+    printf 'synthetic-container\n'
+    exit
+fi
+if [[ "$*" == *'python -m scripts.diagnose_trigger_test_release'* ]]; then
+    printf '{"diagnostic_version":1,"status":"%s","database_head_matches":true,"worker_registered":true,"beat_schedule_correct":true,"notice_origin_allowed":true,"notice_origin_configured":true,"runtime_images_match":true,"runtime_services_healthy":true}\n' \
+        "${TEST_TRIGGER_DIAGNOSTIC_STATUS:-ready}"
+    exit "${TEST_TRIGGER_DIAGNOSTIC_EXIT:-0}"
+fi
 if [[ "$1" == "volume" ]]; then
     [[ "${TEST_DATABASE_EXISTS:-0}" == "1" ]]
     exit
@@ -63,11 +88,15 @@ reset_case() {
     export TEST_DIAGNOSTIC_EXIT=0
     export TEST_DIAGNOSTIC_STATUS=recovery_configured_not_probed
     export TEST_PROVISIONER_HEALTH_EXIT=0
+    export TEST_IMAGE_MISMATCH=0 TEST_TRIGGER_DIAGNOSTIC_EXIT=0
+    export TEST_TRIGGER_DIAGNOSTIC_STATUS=ready
     export AETERNA_RECOVERY_KMS_ENABLED=false
+    export AETERNA_TRIGGER_TEST_NOTICE_ORIGIN=
     unset AETERNA_RECOVERY_PROVISION_AWS_CONFIG_DIRECTORY
 }
 
 reset_case
+export AETERNA_TRIGGER_TEST_NOTICE_ORIGIN=https://api.example.test
 if ! bash "$repository/deploy.sh" release "$revision" \
     > "$test_directory/result.log" 2>&1; then
     sed -n '1,120p' "$test_directory/result.log" >&2
@@ -75,8 +104,11 @@ if ! bash "$repository/deploy.sh" release "$revision" \
 fi
 awk '/ stop celery-beat/ { stop=NR } /pg_dump/ { backup=NR } /cp \/app\/identity-keys/ { envelope=NR } /alembic upgrade head/ { migration=NR } /--pull never/ { start=NR } END { exit !(stop && stop < backup && backup < envelope && envelope < migration && migration < start) }' "$TEST_COMMAND_LOG"
 awk '/identity-setup --region/ && /profile=aeterna-identity-provisioner directory=\/etc\/aeterna\/aws-identity-provisioner/ { found=1 } END { exit !found }' "$TEST_COMMAND_LOG"
+awk '/alembic upgrade head/ && /origin=https:\/\/api.example.test/ { found=1 } END { exit !found }' "$TEST_COMMAND_LOG"
 grep -q '"status":"recovery_configured_not_probed"' \
     "$test_directory/release-status/$revision.json"
+grep -q '"status":"ready"' "$test_directory/release-status/$revision-trigger.json"
+awk '/python -m scripts.diagnose_trigger_test_release/ && /--worker-hostname synthetic-worker --runtime-containers-verified/ { found=1 } END { exit !found }' "$TEST_COMMAND_LOG"
 
 reset_case
 export TEST_DATABASE_EXISTS=1 TEST_ENVELOPE_EXISTS=1
@@ -141,4 +173,24 @@ fi
 awk '/ volume inspect| up | stop | run / { exit 1 }' "$TEST_COMMAND_LOG"
 export AWS_CONFIG_DIRECTORY=/etc/aeterna/aws-runtime
 
-printf 'Ten release safety checks passed.\n'
+reset_case
+export TEST_ENVELOPE_EXISTS=1 TEST_IMAGE_MISMATCH=1
+if bash "$repository/deploy.sh" release "$revision" > "$test_directory/result.log" 2>&1; then
+    exit 1
+fi
+awk '/python -m scripts.diagnose_trigger_test_release/ { exit 1 }' "$TEST_COMMAND_LOG"
+
+reset_case
+export TEST_ENVELOPE_EXISTS=1 TEST_TRIGGER_DIAGNOSTIC_EXIT=1
+export TEST_TRIGGER_DIAGNOSTIC_STATUS=failed
+if bash "$repository/deploy.sh" release "$revision" > "$test_directory/result.log" 2>&1; then
+    exit 1
+fi
+grep -q '"status":"failed"' "$test_directory/release-status/$revision-trigger.json"
+
+reset_case
+export TEST_ENVELOPE_EXISTS=1 TEST_TRIGGER_DIAGNOSTIC_STATUS=disabled
+bash "$repository/deploy.sh" release "$revision" > "$test_directory/result.log" 2>&1
+grep -q '"status":"disabled"' "$test_directory/release-status/$revision-trigger.json"
+
+printf 'Thirteen release safety checks passed.\n'

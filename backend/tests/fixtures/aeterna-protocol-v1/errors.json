@@ -200,6 +200,70 @@
     {
       "code": "recovery.custody_challenge_unavailable",
       "http_status": 409
+    },
+    {
+      "code": "trigger_test.unavailable",
+      "http_status": 503
+    },
+    {
+      "code": "trigger_test.not_found",
+      "http_status": 404
+    },
+    {
+      "code": "trigger_test.conflict",
+      "http_status": 409
+    },
+    {
+      "code": "trigger_test.expired",
+      "http_status": 410
+    },
+    {
+      "code": "trigger_test.not_ready",
+      "http_status": 409
+    },
+    {
+      "code": "trigger_test.recipient_unavailable",
+      "http_status": 409
+    },
+    {
+      "code": "trigger_test.rate_limited",
+      "http_status": 429
+    },
+    {
+      "code": "trigger_test.challenge_invalid",
+      "http_status": 400
+    },
+    {
+      "code": "trigger_test.challenge_expired",
+      "http_status": 400
+    },
+    {
+      "code": "trigger_test.attempts_exhausted",
+      "http_status": 429
+    },
+    {
+      "code": "trigger_test.claim_invalid",
+      "http_status": 401
+    },
+    {
+      "code": "trigger_test.binding_mismatch",
+      "http_status": 409
+    },
+    {
+      "code": "trigger_test.sample_unavailable",
+      "http_status": 409
+    },
+    {
+      "code": "trigger_test.protection_required",
+      "http_status": 409
+    },
+    {
+      "code": "trigger_test.password_invalid",
+      "http_status": 400
+    },
+    {
+      "code": "trigger_test.progress_invalid",
+      "http_status": 409
     }
   ]
 }

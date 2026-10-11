@@ -182,3 +182,43 @@ responses require no-store. No personal values enter logs, audits or receipts. T
 in provisioning, Owner release, rotation provision, and signed recipient secret
 responses; it is absent from
 requests, logs, error bodies, audit fixtures, and all other operations.
+
+## Isolated inactivity trigger tests
+
+ADR 0027 adds the closed, device-signed `/api/v1/trigger-tests/{operation}`
+operations and distinct `aeterna.trigger-test.<operation>.v1` domains. These
+additive resources share no production policy, heartbeat, recovery grant or
+management state. The prepared package release is `protocol-v1.10.0`; it has not
+been published or deployed. The exact operation fields are normative JSON
+schemas, with generated synthetic signatures and cross-domain/extra-field
+negative fixtures. The operation literal replaces route hyphens with underscores
+under `trigger_test.*`.
+
+Creation snapshots an explicitly eligible Owner or accepted/verified contact,
+requires acknowledgement, and remains PREPARING until native sample preparation
+(if selected) succeeds. Server clock starts only on activation. Warning is due
+after 60 seconds, threshold after 120 seconds, and grace is at least 60 seconds
+after both actual grace entry and warning proof. These timings apply only to
+test resources; delayed scanning or delivery extends them. Activity/stop and
+dispatch are transactional, terminal resources cannot restart, and a local
+countdown cannot authorize a transition.
+
+The warning code and recipient code are eight decimal digits, purpose-bound,
+rate/attempt/expiry limited, and verified independently. Recipient challenge
+requires the opaque notice token from the exact configured-origin URL
+`/trigger-tests/notice#session=<UUID>&token=<base64url32>`. Fragment data never
+reaches the notice GET endpoint; no GET mutates authorization. A test claim can
+retrieve/confirm only its exact synthetic source or already allocated successor
+binding and can never authorize production retrieval or management. Claim tokens
+are signed fields for release-secret/rotation-confirm and stay native-only.
+
+All responses use `Cache-Control: no-store`. Provision/release-secret responses
+contain synthetic SRS only at the native/service boundary. No ERC, VDK, password
+or user content is transmitted. Sample content is native-only and readable after
+actual full rekey and exact service confirmation. Test evidence distinguishes
+provider acceptance, mailbox proof, local decryption and confirmed replacement;
+the service completion report is not hardware attestation of local recovery.
+The native safe view can project the locally observed sample state while the
+service retains authoritative lifecycle/evidence. Expiry/cleanup invalidate
+unused capabilities and remove exact isolated test resources; mail or factors
+already copied cannot be recalled.

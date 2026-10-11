@@ -20,6 +20,11 @@ class RouteConfig:
 # Client route configuration
 CLIENT_ROUTES = [
     RouteConfig(
+        module_path="app.api.client.v1.aeterna_trigger_test",
+        prefix=f"{settings.API_V1_STR}",
+        tags=["isolated-inactivity-tests"],
+    ),
+    RouteConfig(
         module_path="app.api.client.v1.aeterna_setup",
         prefix=f"{settings.API_V1_STR}",
         tags=["owner-policy-setup"],
@@ -67,6 +72,11 @@ BACKOFFICE_ROUTES = [
 
 # Common route configuration (routes that are not client or backoffice specific)
 COMMON_ROUTES = [
+    RouteConfig(
+        module_path="app.api.internal.v1.aeterna_trigger_test_notice",
+        prefix="",
+        tags=["test-notice-instructions"],
+    ),
     RouteConfig(
         module_path="app.api.internal.v1.aeterna_email_events",
         prefix="/api/internal/v1/email-events",

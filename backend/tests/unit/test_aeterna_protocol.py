@@ -80,7 +80,7 @@ from app.services.common.aeterna_security import (
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "aeterna-protocol-v1"
 EXPECTED_PUBLIC_RELEASE_DIGEST = (
-    "3b5f4a167279d3efe3ecde641ee8daa92fe7b21ab71c3e8d3843469daf63917c"
+    "2997eb49b03235e1e81f4ad55a6a2b0281eed4c1a4613542208328258dc923d9"
 )
 
 
@@ -111,7 +111,7 @@ def make_request(body: bytes, content_type: str = "application/json") -> Request
 
 def test_vendored_public_release_digest_and_every_file_hash_match():
     manifest = load_json("manifest.json")
-    assert manifest["release_tag"] == "protocol-v1.9.0"
+    assert manifest["release_tag"] == "protocol-v1.10.0"
     assert manifest["release_digest"] == EXPECTED_PUBLIC_RELEASE_DIGEST
     for entry in manifest["files"]:
         content = (FIXTURE_ROOT / entry["path"]).read_bytes()

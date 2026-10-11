@@ -48,6 +48,10 @@ class AeternaContact(BaseModel):
             name="ck_aeterna_contacts_disclosure_mode",
         ),
         CheckConstraint(
+            "notification_locale IN ('en', 'zh-CN')",
+            name="ck_aeterna_contacts_notification_locale",
+        ),
+        CheckConstraint(
             "consent_status IN ('NOT_REQUESTED', 'INVITED', 'ACCEPTED', 'DECLINED')",
             name="ck_aeterna_contacts_consent_status",
         ),
@@ -75,6 +79,9 @@ class AeternaContact(BaseModel):
     email_nonce = Column(LargeBinary, nullable=False)
     email_key_version = Column(Integer, nullable=False, default=1)
     disclosure_mode = Column(String(32), nullable=False)
+    notification_locale = Column(
+        String(16), nullable=False, default="en", server_default="en"
+    )
     consent_status = Column(String(24), nullable=False)
     invitation_sent_at = Column(TIMESTAMP(timezone=True), nullable=True)
     accepted_at = Column(TIMESTAMP(timezone=True), nullable=True)

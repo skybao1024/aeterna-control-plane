@@ -1,0 +1,10 @@
+{
+  "subject": "[TEST] Aeterna inactivity trigger test",
+  "intro": "This is an isolated test you started. It concerns synthetic sample data, not a real inactivity event.",
+  "warningCode": "Test warning verification code",
+  "recipientCode": "Test recipient verification code",
+  "codeExpiry": "The code expires in ten minutes. Enter it only in this Aeterna test.",
+  "notice": "This test passed its inactivity threshold and full grace period. Paste the complete link below into this Aeterna test to explicitly request a separate mailbox code.",
+  "landingTitle": "Aeterna isolated test notice",
+  "landingBody": "This page does not verify or consume the test link. Open Aeterna Relay, return to the inactivity trigger test, paste the complete link from your email and explicitly request a mailbox code. This test does not grant access to real libraries."
+}

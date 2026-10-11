@@ -11,6 +11,7 @@ from botocore.exceptions import ClientError, ReadTimeoutError
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from app.db.base import get_session_local
 from app.exceptions.aeterna_protocol import AeternaProtocolException
@@ -211,17 +212,26 @@ def signed_document(
     }
 
 
-def create_document(fixture: AccountFixture, email: str, disclosure_mode: str) -> dict:
+def create_document(
+    fixture: AccountFixture, email: str, disclosure_mode: str, locale: str | None = None
+) -> dict:
     return signed_document(
         fixture,
         domain="aeterna.contact.create.v1",
         operation="contact.create",
-        members={"email": email, "disclosure_mode": disclosure_mode},
+        members={
+            "email": email,
+            "disclosure_mode": disclosure_mode,
+            **({"locale": locale} if locale is not None else {}),
+        },
     )
 
 
 def action_document(
-    fixture: AccountFixture, contact_id: uuid.UUID, operation: str
+    fixture: AccountFixture,
+    contact_id: uuid.UUID,
+    operation: str,
+    locale: str | None = None,
 ) -> dict:
     domains = {
         "contact.invite": "aeterna.contact.invite.v1",
@@ -233,7 +243,10 @@ def action_document(
         fixture,
         domain=domains[operation],
         operation=operation,
-        members={"contact_id": str(contact_id)},
+        members={
+            "contact_id": str(contact_id),
+            **({"locale": locale} if locale is not None else {}),
+        },
     )
 
 
@@ -256,8 +269,9 @@ async def create_contact(
     fixture: AccountFixture,
     email: str,
     disclosure_mode: str,
+    locale: str | None = None,
 ):
-    document = create_document(fixture, email, disclosure_mode)
+    document = create_document(fixture, email, disclosure_mode, locale)
     payload = ContactCreateRequest.model_validate(document)
     session_factory = get_session_local()
     async with session_factory() as db:
@@ -399,16 +413,20 @@ async def test_confirm_now_requires_acceptance_and_escapes_confirmed_content():
     assert "&lt;script&gt;" in adapter.envelopes[-1].html_body
 
 
-async def test_private_target_sends_nothing_before_release_and_only_neutral_invite():
+@pytest.mark.parametrize("locale", ["en", "zh-CN"])
+async def test_private_target_sends_nothing_before_release_and_only_neutral_invite(
+    locale,
+):
     now = datetime(2026, 9, 27, 12, tzinfo=UTC)
     clock = MutableClock(now)
     fixture = await create_account(now)
     service = AeternaNotificationService(key_provider=synthetic_keys, clock=clock)
     created = await create_contact(
-        service, fixture, "private@example.com", "PRIVATE_UNTIL_RELEASE"
+        service, fixture, "private@example.com", "PRIVATE_UNTIL_RELEASE", locale
     )
     contact_id = uuid.UUID(created["contact_id"])
     assert created["consent_status"] == "NOT_REQUESTED"
+    assert (await get_contact(contact_id)).notification_locale == locale
     assert await get_email_events(contact_id) == []
 
     invite_document = action_document(fixture, contact_id, "contact.invite")
@@ -488,9 +506,171 @@ async def test_private_target_sends_nothing_before_release_and_only_neutral_invi
     assert "PRIVATE CUSTOM CONTENT MUST NOT LEAK" not in adapter.envelopes[0].text_body
     assert "claim" not in adapter.envelopes[0].text_body.lower()
     assert "srs" not in adapter.envelopes[0].text_body.lower()
+    assert f"?locale={locale}#token=" in adapter.envelopes[0].text_body
+    assert f'lang="{locale}"' in adapter.envelopes[0].html_body
+    if locale == "zh-CN":
+        assert "邀请你成为恢复联系人" in adapter.envelopes[0].subject
 
     assert await respond(service, contact_id, "accept") == {"processed": True}
     assert (await get_contact(contact_id)).consent_status == "ACCEPTED"
+
+
+async def test_locale_is_signed_and_replays_do_not_change_the_saved_language():
+    now = datetime(2026, 9, 27, 12, tzinfo=UTC)
+    fixture = await create_account(now)
+    service = AeternaNotificationService(key_provider=synthetic_keys, clock=lambda: now)
+    document = create_document(fixture, "target@example.com", "CONFIRM_NOW", "en")
+    document["signed"]["locale"] = "zh-CN"
+    with pytest.raises(AeternaProtocolException) as invalid:
+        async with get_session_local()() as db:
+            await service.create_contact(
+                db,
+                ContactCreateRequest.model_validate(document),
+                document,
+                "203.0.113.10",
+            )
+    assert invalid.value.code == "device.proof_invalid"
+    async with get_session_local()() as db:
+        assert await db.scalar(select(AeternaContact.id)) is None
+
+    document = create_document(fixture, "target@example.com", "CONFIRM_NOW", "zh-CN")
+    async with get_session_local()() as db:
+        created = await service.create_contact(
+            db, ContactCreateRequest.model_validate(document), document, "203.0.113.10"
+        )
+    contact_id = uuid.UUID(created["contact_id"])
+    assert (await get_contact(contact_id)).notification_locale == "zh-CN"
+    async with get_session_local()() as db:
+        assert (
+            await service.create_contact(
+                db,
+                ContactCreateRequest.model_validate(document),
+                document,
+                "203.0.113.10",
+            )
+            == created
+        )
+    assert len(await get_email_events(contact_id)) == 1
+
+    invite = action_document(fixture, contact_id, "contact.invite", "en")
+    async with get_session_local()() as db:
+        invited = await service.invite_contact(
+            db, ContactActionRequest.model_validate(invite), invite, "203.0.113.10"
+        )
+    assert (await get_contact(contact_id)).notification_locale == "en"
+    count = len(await get_email_events(contact_id))
+    async with get_session_local()() as db:
+        assert (
+            await service.invite_contact(
+                db, ContactActionRequest.model_validate(invite), invite, "203.0.113.10"
+            )
+            == invited
+        )
+    assert len(await get_email_events(contact_id)) == count
+
+    invite["signed"]["locale"] = "zh-CN"
+    with pytest.raises(AeternaProtocolException) as tampered:
+        async with get_session_local()() as db:
+            await service.invite_contact(
+                db, ContactActionRequest.model_validate(invite), invite, "203.0.113.10"
+            )
+    assert tampered.value.code == "device.proof_invalid"
+    invite["signature"] = encode_base64url(
+        fixture.signing_key.sign(canonicalize(invite["signed"]))
+    )
+    with pytest.raises(AeternaProtocolException) as conflict:
+        async with get_session_local()() as db:
+            await service.invite_contact(
+                db, ContactActionRequest.model_validate(invite), invite, "203.0.113.10"
+            )
+    assert conflict.value.code == "request.idempotency_conflict"
+    assert (await get_contact(contact_id)).notification_locale == "en"
+
+
+async def test_omitted_actions_preserve_locale_and_authorized_test_updates_it():
+    now = datetime(2026, 9, 27, 12, tzinfo=UTC)
+    clock = MutableClock(now)
+    fixture = await create_account(now)
+    service = AeternaNotificationService(key_provider=synthetic_keys, clock=clock)
+    created = await create_contact(
+        service, fixture, "chinese@example.com", "CONFIRM_NOW", "zh-CN"
+    )
+    contact_id = uuid.UUID(created["contact_id"])
+    invite = action_document(fixture, contact_id, "contact.invite")
+    async with get_session_local()() as db:
+        await service.invite_contact(
+            db, ContactActionRequest.model_validate(invite), invite, "203.0.113.10"
+        )
+    assert (await get_contact(contact_id)).notification_locale == "zh-CN"
+    adapter = FakeIdempotentAdapter(failures_remaining=1)
+    delivery = AeternaEmailDeliveryService(
+        adapter=adapter, key_provider=synthetic_keys, clock=clock
+    )
+    event = (await get_email_events(contact_id))[-1]
+    async with get_session_local()() as db:
+        assert (await delivery.dispatch_event(db, event.id)).status == "retry_pending"
+    clock.current += timedelta(minutes=10)
+    async with get_session_local()() as db:
+        assert (
+            await delivery.dispatch_event(db, event.id)
+        ).status == "provider_accepted"
+    assert "邀请你成为恢复联系人" in adapter.envelopes[-1].subject
+    assert "2026-10-04 12:00" in adapter.envelopes[-1].text_body
+
+    unverified = action_document(fixture, contact_id, "notification.test", "en")
+    with pytest.raises(AeternaProtocolException) as denied:
+        async with get_session_local()() as db:
+            await service.queue_test_email(
+                db,
+                ContactActionRequest.model_validate(unverified),
+                unverified,
+                "203.0.113.10",
+            )
+    assert denied.value.code == "contact.verification_required"
+    assert (await get_contact(contact_id)).notification_locale == "zh-CN"
+    await respond(service, contact_id, "accept")
+    for locale, expected in ((None, "zh-CN"), ("en", "en")):
+        document = action_document(fixture, contact_id, "notification.test", locale)
+        async with get_session_local()() as db:
+            result = await service.queue_test_email(
+                db,
+                ContactActionRequest.model_validate(document),
+                document,
+                "203.0.113.10",
+            )
+        assert (await get_contact(contact_id)).notification_locale == expected
+        async with get_session_local()() as db:
+            assert (
+                await service.queue_test_email(
+                    db,
+                    ContactActionRequest.model_validate(document),
+                    document,
+                    "203.0.113.10",
+                )
+                == result
+            )
+        event = (await get_email_events(contact_id))[-1]
+        async with get_session_local()() as db:
+            await delivery.dispatch_event(db, event.id)
+        expected_text = "邮件送达测试" if expected == "zh-CN" else "delivery test"
+        assert expected_text in adapter.envelopes[-1].subject
+
+
+async def test_legacy_create_uses_english_and_database_rejects_invalid_locale():
+    now = datetime(2026, 9, 27, 12, tzinfo=UTC)
+    fixture = await create_account(now)
+    service = AeternaNotificationService(key_provider=synthetic_keys, clock=lambda: now)
+    created = await create_contact(
+        service, fixture, "legacy@example.com", "CONFIRM_NOW"
+    )
+    contact_id = uuid.UUID(created["contact_id"])
+    assert (await get_contact(contact_id)).notification_locale == "en"
+    with pytest.raises(IntegrityError):
+        async with get_session_local().begin() as db:
+            contact = await db.get(AeternaContact, contact_id)
+            contact.notification_locale = "invalid"
+            await db.flush()
+    assert (await get_contact(contact_id)).notification_locale == "en"
 
 
 async def test_wrong_device_proof_cannot_create_or_elevate_contact():

@@ -1,0 +1,18 @@
+{
+  "protocol_version": 1,
+  "signed": {
+    "canonicalization": "jcs-rfc8785",
+    "domain": "aeterna.trigger-test.recipient-verify.v1",
+    "operation": "trigger_test.recipient_verify",
+    "protocol_version": 1,
+    "signature_version": 1,
+    "request_id": "00000000-0000-4000-8000-000000000720",
+    "account_id": "00000000-0000-4000-8000-000000000705",
+    "device_id": "00000000-0000-4000-8000-000000000706",
+    "session_id": "00000000-0000-4000-8000-000000000700",
+    "challenge_id": "00000000-0000-4000-8000-000000000703",
+    "code": "12345678",
+    "recovery_id": "00000000-0000-4000-8000-000000000799"
+  },
+  "signature": "t051kq2TqmEFFcAVmeHNkzuoHT7fEtwnJmgp7Xb-U2zz9UIiZr0THQlBqUCmD1bPGDTjLHqvGWjE9s0d6Z9OBQ"
+}

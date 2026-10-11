@@ -10,12 +10,13 @@ public client protocol.
 - [Docker deployment](./architecture/docker-deployment.md)
 - [ADR 0001: Account-policy transaction and outage semantics](./architecture/adr/0001-account-policy-transaction-and-outage-semantics.md)
 - [ADR 0002: Warning, grace, and transactional Outbox state machine](./architecture/adr/0002-warning-grace-outbox-state-machine.md)
-- [ADR 0003: Contact consent and email delivery boundary](./architecture/adr/0003-contact-consent-and-email-delivery-boundary.md)
+- [ADR 0003: Contact consent, localized invitation copy, and email delivery boundary](./architecture/adr/0003-contact-consent-and-email-delivery-boundary.md)
 - [ADR 0004: Delayed recovery KMS and claim boundary](./architecture/adr/0004-delayed-recovery-kms-and-claim-boundary.md)
 - [ADR 0005: Production identity KMS envelope](./architecture/adr/0005-production-identity-kms-envelope.md)
 - [ADR 0006: Recipient Vault rotation and local custody](./architecture/adr/0006-recipient-vault-rotation-and-custody.md)
 - [ADR 0007: Custody freshness and recipient management](./architecture/adr/0007-custody-freshness-and-recipient-management.md)
 - [ADR 0008: Signed SRS retrieval and legacy retirement](./architecture/adr/0008-signed-srs-retrieval-and-legacy-retirement.md)
+- [ADR 0009: Isolated inactivity trigger tests](./architecture/adr/0009-isolated-inactivity-trigger-tests.md)
 
 ## API
 
@@ -39,6 +40,8 @@ public client protocol.
 - [I14 Owner recovery and rotation results](./development/i14-owner-recovery-rotation-results.md)
 - [M05 recovery completion and live acceptance](./development/m05-recovery-completion-results.md)
 - [UX01 Owner configuration and safe message editing](./development/ux01-owner-configuration-results.md)
+
+- [Isolated inactivity trigger test results](./development/2026-10-11-trigger-test-results.md)
 
 ## Security
 

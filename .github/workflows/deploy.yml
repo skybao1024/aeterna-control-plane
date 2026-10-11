@@ -79,6 +79,10 @@ jobs:
         run: |
           IMAGE_TAG=dev docker compose --env-file "$ENV_FILE" -f docker-compose.yml \
             --profile identity-setup run --rm --no-deps identity-setup --help
+      - name: Pause synthetic schedulers before database fixture tests
+        run: |
+          docker compose --env-file "$ENV_FILE" -f docker-compose.yml -f docker-compose.dev.yml \
+            stop celery-beat celery-worker
       - name: Verify backend against PostgreSQL and Redis
         run: |
           docker compose --env-file "$ENV_FILE" -f docker-compose.yml -f docker-compose.dev.yml \
@@ -95,6 +99,7 @@ jobs:
         run: |
           bash -n deploy.sh deployment/ssh-release.sh deployment/bootstrap.sh deployment/configure-ingress.sh
           bash tests/deployment/test_release.sh
+          bash tests/deployment/test_trigger_test_configuration.sh
       - name: Package tested production images
         if: github.event_name != 'pull_request'
         env:
@@ -172,6 +177,9 @@ jobs:
           diagnostic_path="/srv/aeterna-control-plane/release-status/$RELEASE_SHA.json"
           printf 'Sanitized recovery configuration: '
           ssh "${ssh_options[@]}" "$target" "cat '$diagnostic_path'"
+          trigger_diagnostic_path="/srv/aeterna-control-plane/release-status/$RELEASE_SHA-trigger.json"
+          printf 'Sanitized trigger-test runtime: '
+          ssh "${ssh_options[@]}" "$target" "cat '$trigger_diagnostic_path'"
       - name: Verify public HTTPS endpoints
         run: |
           curl --fail --silent --show-error --max-time 30 \

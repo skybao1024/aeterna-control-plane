@@ -1,0 +1,18 @@
+{
+  "fixture_version": 1,
+  "seed": "ERERERERERERERERERERERERERERERERERERERERERE",
+  "public_key": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc",
+  "canonical_bytes": "eyJhY2NvdW50X2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwNzA1IiwiY2Fub25pY2FsaXphdGlvbiI6Impjcy1yZmM4Nzg1IiwiZGV2aWNlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwNzA2IiwiZG9tYWluIjoiYWV0ZXJuYS50cmlnZ2VyLXRlc3Quc3RvcC52MSIsIm9wZXJhdGlvbiI6InRyaWdnZXJfdGVzdC5zdG9wIiwicHJvdG9jb2xfdmVyc2lvbiI6MSwicmVxdWVzdF9pZCI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDcxNyIsInNlc3Npb25faWQiOiIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDA3MDAiLCJzaWduYXR1cmVfdmVyc2lvbiI6MX0",
+  "signature": "LZY7zDOgm-gg1nRNL8GXeUdrjgqspUn53-bmmNj-r-QHkVziSFv4uvj1ScddA4fbupjyOHovp4zLWalPHO9kBA",
+  "document": {
+    "canonicalization": "jcs-rfc8785",
+    "domain": "aeterna.trigger-test.stop.v1",
+    "operation": "trigger_test.stop",
+    "protocol_version": 1,
+    "signature_version": 1,
+    "request_id": "00000000-0000-4000-8000-000000000717",
+    "account_id": "00000000-0000-4000-8000-000000000705",
+    "device_id": "00000000-0000-4000-8000-000000000706",
+    "session_id": "00000000-0000-4000-8000-000000000700"
+  }
+}

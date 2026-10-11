@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.client.aeterna_notification import (
+    ContactActionRequest,
     ContactCreateRequest,
     NotificationTemplateEditRequest,
     NotificationTemplateRequest,
@@ -127,3 +128,77 @@ def test_identity_read_rejects_duplicate_or_excessive_contact_ids(ids):
     )
     with pytest.raises(ValidationError):
         OwnerConfigurationRequest.model_validate(document)
+
+
+def contact_locale_document(operation="contact.create", **members):
+    return {
+        "protocol_version": 1,
+        "signed": {
+            "canonicalization": "jcs-rfc8785",
+            "domain": f"aeterna.{operation}.v1",
+            "operation": operation,
+            "protocol_version": 1,
+            "signature_version": 1,
+            "request_id": str(uuid.uuid4()),
+            "account_id": str(uuid.uuid4()),
+            "authorizing_device_id": str(uuid.uuid4()),
+            **members,
+        },
+        "signature": "A" * 86,
+    }
+
+
+@pytest.mark.parametrize("locale", ["en", "zh-CN"])
+def test_contact_locale_accepts_only_supported_signed_values(locale):
+    create = ContactCreateRequest.model_validate(
+        contact_locale_document(
+            email="contact@example.com", disclosure_mode="CONFIRM_NOW", locale=locale
+        )
+    )
+    assert create.signed.locale == locale
+    for operation in ("contact.invite", "notification.test"):
+        action = ContactActionRequest.model_validate(
+            contact_locale_document(
+                operation, contact_id=str(uuid.uuid4()), locale=locale
+            )
+        )
+        assert action.signed.locale == locale
+
+
+@pytest.mark.parametrize("locale", ["zh", "zh-cn", "fr", "a" * 1000, None, 1])
+def test_contact_locale_rejects_unknown_unbounded_and_null_values(locale):
+    with pytest.raises(ValidationError):
+        ContactCreateRequest.model_validate(
+            contact_locale_document(
+                email="contact@example.com",
+                disclosure_mode="CONFIRM_NOW",
+                locale=locale,
+            )
+        )
+    with pytest.raises(ValidationError):
+        ContactActionRequest.model_validate(
+            contact_locale_document(
+                "contact.invite", contact_id=str(uuid.uuid4()), locale=locale
+            )
+        )
+
+
+def test_legacy_contact_locale_defaults_do_not_expand_signed_document():
+    document = contact_locale_document(
+        email="contact@example.com", disclosure_mode="CONFIRM_NOW"
+    )
+    assert ContactCreateRequest.model_validate(document).signed.locale == "en"
+    assert "locale" not in document["signed"]
+    document = contact_locale_document("contact.invite", contact_id=str(uuid.uuid4()))
+    assert ContactActionRequest.model_validate(document).signed.locale is None
+    assert "locale" not in document["signed"]
+
+
+@pytest.mark.parametrize("operation", ["contact.status", "contact.delete"])
+def test_contact_read_delete_preserve_the_existing_closed_signed_shape(operation):
+    with pytest.raises(ValidationError):
+        ContactActionRequest.model_validate(
+            contact_locale_document(
+                operation, contact_id=str(uuid.uuid4()), locale="en"
+            )
+        )

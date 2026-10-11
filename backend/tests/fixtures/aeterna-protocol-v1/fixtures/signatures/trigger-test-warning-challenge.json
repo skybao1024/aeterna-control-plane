@@ -1,0 +1,18 @@
+{
+  "fixture_version": 1,
+  "seed": "ERERERERERERERERERERERERERERERERERERERERERE",
+  "public_key": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc",
+  "canonical_bytes": "eyJhY2NvdW50X2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwNzA1IiwiY2Fub25pY2FsaXphdGlvbiI6Impjcy1yZmM4Nzg1IiwiZGV2aWNlX2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwNzA2IiwiZG9tYWluIjoiYWV0ZXJuYS50cmlnZ2VyLXRlc3Qud2FybmluZy1jaGFsbGVuZ2UudjEiLCJvcGVyYXRpb24iOiJ0cmlnZ2VyX3Rlc3Qud2FybmluZ19jaGFsbGVuZ2UiLCJwcm90b2NvbF92ZXJzaW9uIjoxLCJyZXF1ZXN0X2lkIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwNzE0Iiwic2Vzc2lvbl9pZCI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDcwMCIsInNpZ25hdHVyZV92ZXJzaW9uIjoxfQ",
+  "signature": "UkttjdMDwkkQ3A851tjqd4wXSXW-bt73NMMo_48wX41WfV0JFLBH08fCrT4XxmvmL2R82mA8Ji-ZjUXm9TnLCA",
+  "document": {
+    "canonicalization": "jcs-rfc8785",
+    "domain": "aeterna.trigger-test.warning-challenge.v1",
+    "operation": "trigger_test.warning_challenge",
+    "protocol_version": 1,
+    "signature_version": 1,
+    "request_id": "00000000-0000-4000-8000-000000000714",
+    "account_id": "00000000-0000-4000-8000-000000000705",
+    "device_id": "00000000-0000-4000-8000-000000000706",
+    "session_id": "00000000-0000-4000-8000-000000000700"
+  }
+}

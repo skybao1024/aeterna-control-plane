@@ -14,11 +14,33 @@
   border: 1px solid var(--border-default);
   border-radius: 16px;
   background-color: var(--card-bg);
+  font-size: 16px;
   line-height: 1.6;
+}
+
+.card h1 {
+  margin: 0 0 20px;
+  font-size: 24px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.card p {
+  margin: 0 0 16px;
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .page {
+    padding: 16px;
+  }
+
+  .card {
+    padding: 24px;
+  }
 }

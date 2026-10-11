@@ -1,0 +1,21 @@
+{
+  "protocol_version": 1,
+  "signed": {
+    "canonicalization": "jcs-rfc8785",
+    "domain": "aeterna.trigger-test.rotation-confirm.v1",
+    "operation": "trigger_test.rotation_confirm",
+    "protocol_version": 1,
+    "signature_version": 1,
+    "request_id": "00000000-0000-4000-8000-000000000722",
+    "account_id": "00000000-0000-4000-8000-000000000705",
+    "device_id": "00000000-0000-4000-8000-000000000706",
+    "session_id": "00000000-0000-4000-8000-000000000700",
+    "sample_vault_id": "00000000-0000-4000-8000-000000000701",
+    "target_recovery_id": "00000000-0000-4000-8000-000000000704",
+    "wrapper_digest": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "generation": 2,
+    "claim_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "recovery_id": "00000000-0000-4000-8000-000000000799"
+  },
+  "signature": "vUWXtYKIH_3pLcemuHl9rQSdHWU1BVJZ4hCAiI4jeJGlChZk3DQVKRBKq-X2zdqdaEs9wKuSbNl_KiLzbC4JAw"
+}

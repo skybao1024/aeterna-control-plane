@@ -1,0 +1,20 @@
+{
+  "fixture_version": 1,
+  "expected": "device.proof_invalid",
+  "verification_public_key": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc",
+  "envelope": {
+    "protocol_version": 1,
+    "signed": {
+      "canonicalization": "jcs-rfc8785",
+      "domain": "aeterna.trigger-test.wrong-purpose.v1",
+      "operation": "trigger_test.read",
+      "protocol_version": 1,
+      "signature_version": 1,
+      "request_id": "00000000-0000-4000-8000-000000000710",
+      "account_id": "00000000-0000-4000-8000-000000000705",
+      "device_id": "00000000-0000-4000-8000-000000000706",
+      "session_id": "00000000-0000-4000-8000-000000000700"
+    },
+    "signature": "RDHoXGm2o4b0c4H_f8d6hU02x9BniHALDUdxE0VN562Z-Ib3JHzUP1NniJg7CrjT6C18jdU0GVfoSw3_X1xbCQ"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "protocol_version": 1,
+  "signed": {
+    "canonicalization": "jcs-rfc8785",
+    "domain": "aeterna.trigger-test.provision.v1",
+    "operation": "trigger_test.provision",
+    "protocol_version": 1,
+    "signature_version": 1,
+    "request_id": "00000000-0000-4000-8000-000000000712",
+    "account_id": "00000000-0000-4000-8000-000000000705",
+    "device_id": "00000000-0000-4000-8000-000000000706",
+    "session_id": "00000000-0000-4000-8000-000000000700",
+    "recovery_id": "00000000-0000-4000-8000-000000000799"
+  },
+  "signature": "TkM0fidFNw0utPqkgNVz-0rLl5WYPE983gBPkv_aHoctb-ILkt_CxCOVeK-1Bc--HiN4xm6QcYEcuEeVMs_DCQ"
+}

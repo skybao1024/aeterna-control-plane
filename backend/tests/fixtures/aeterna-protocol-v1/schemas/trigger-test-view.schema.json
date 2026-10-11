@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:trigger-test-view",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "available": {
+      "type": "boolean"
+    },
+    "sampleRecoveryAvailable": {
+      "type": "boolean"
+    },
+    "ownerEmail": {
+      "anyOf": [
+        {
+          "$ref": "common.schema.json#/$defs/email"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "recipients": {
+      "type": "array",
+      "maxItems": 11,
+      "x-aeterna-unique-recipient-ids": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "const": "owner",
+                "type": "string"
+              },
+              {
+                "$ref": "common.schema.json#/$defs/uuid"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["owner", "contact"]
+          },
+          "email": {
+            "$ref": "common.schema.json#/$defs/email"
+          }
+        },
+        "required": ["id", "kind", "email"]
+      }
+    },
+    "session": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "common.schema.json#/$defs/uuid"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "stage": {
+              "type": "string",
+              "enum": [
+                "preparing",
+                "waiting",
+                "warning",
+                "grace",
+                "released",
+                "complete",
+                "stopped",
+                "expired"
+              ]
+            },
+            "includeRecovery": {
+              "type": "boolean"
+            },
+            "recipientId": {
+              "anyOf": [
+                {
+                  "const": "owner",
+                  "type": "string"
+                },
+                {
+                  "$ref": "common.schema.json#/$defs/uuid"
+                }
+              ]
+            },
+            "recipientEmail": {
+              "$ref": "common.schema.json#/$defs/email"
+            },
+            "warningAt": {
+              "anyOf": [
+                {
+                  "$ref": "common.schema.json#/$defs/timestamp"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "dueAt": {
+              "anyOf": [
+                {
+                  "$ref": "common.schema.json#/$defs/timestamp"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "releaseAt": {
+              "anyOf": [
+                {
+                  "$ref": "common.schema.json#/$defs/timestamp"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "nextAt": {
+              "anyOf": [
+                {
+                  "$ref": "common.schema.json#/$defs/timestamp"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "expiresAt": {
+              "$ref": "common.schema.json#/$defs/timestamp"
+            },
+            "observedAt": {
+              "$ref": "common.schema.json#/$defs/timestamp"
+            },
+            "warningTransport": {
+              "type": "string",
+              "enum": [
+                "not_started",
+                "pending",
+                "accepted",
+                "failed",
+                "unknown"
+              ]
+            },
+            "notificationTransport": {
+              "type": "string",
+              "enum": [
+                "not_started",
+                "pending",
+                "accepted",
+                "failed",
+                "unknown"
+              ]
+            },
+            "warningConfirmed": {
+              "type": "boolean"
+            },
+            "recipientVerified": {
+              "type": "boolean"
+            },
+            "sampleState": {
+              "type": "string",
+              "enum": [
+                "absent",
+                "prepared",
+                "decrypted",
+                "confirmation_pending",
+                "protected"
+              ]
+            },
+            "activityStopped": {
+              "type": "boolean"
+            },
+            "evidence": {
+              "type": "array",
+              "minItems": 6,
+              "x-aeterna-unique-evidence-keys": true,
+              "x-aeterna-verified-evidence-timestamp": true,
+              "maxItems": 6,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "enum": [
+                      "trigger",
+                      "warning",
+                      "notification",
+                      "recipient",
+                      "recovery",
+                      "activity"
+                    ]
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "verified",
+                      "not_verified",
+                      "not_tested",
+                      "not_selected"
+                    ]
+                  },
+                  "observedAt": {
+                    "anyOf": [
+                      {
+                        "$ref": "common.schema.json#/$defs/timestamp"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["key", "outcome", "observedAt"]
+              }
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "stage",
+            "includeRecovery",
+            "recipientId",
+            "recipientEmail",
+            "warningAt",
+            "dueAt",
+            "releaseAt",
+            "nextAt",
+            "expiresAt",
+            "observedAt",
+            "warningTransport",
+            "notificationTransport",
+            "warningConfirmed",
+            "recipientVerified",
+            "sampleState",
+            "activityStopped",
+            "evidence"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "available",
+    "sampleRecoveryAvailable",
+    "ownerEmail",
+    "recipients",
+    "session"
+  ]
+}

@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from 'antd';
-import { invitationTokenFromHash, respondToContactInvitation, type InvitationDecision } from '../../apis/contactInvitation';
+import { invitationTokenFromHash, respondToContactInvitation, type InvitationDecision } from '@/apis/contactInvitation';
+import { contactInvitationCopy as englishCopy } from '@/locales/contactInvitation.en';
+import { contactInvitationCopy as chineseCopy } from '@/locales/contactInvitation.zh-CN';
 import styles from './index.module.scss';
+
+function invitationCopy() {
+  const locale = new URLSearchParams(window.location.search).get('locale');
+  if (locale === 'zh-CN') return chineseCopy;
+  if (locale === 'en') return englishCopy;
+  return navigator.language.toLowerCase().startsWith('zh') ? chineseCopy : englishCopy;
+}
 
 function takeInvitationToken(): string | null {
   const token = invitationTokenFromHash(window.location.hash);
@@ -12,6 +21,7 @@ function takeInvitationToken(): string | null {
 }
 
 export default function ContactInvitation() {
+  const [copy] = useState(invitationCopy);
   const [token, setToken] = useState<string | null>(null);
   const currentToken = useRef<string | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'sending' | 'accepted' | 'declined' | 'error'>('loading');
@@ -41,29 +51,28 @@ export default function ContactInvitation() {
   };
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} lang={copy.language}>
       <div className={styles.card}>
-        <h1>Aeterna recovery contact invitation</h1>
-        {state === 'loading' && <p role="status">Loading invitation…</p>}
+        <h1>{copy.heading}</h1>
+        {state === 'loading' && <p role="status">{copy.loading}</p>}
         {state === 'ready' && (
           <>
-            <p>
-              An Aeterna owner invited you to be a recovery contact. Accepting verifies control of this email address and allows a recovery claim only after the owner’s policy
-              releases. No account or password is needed.
-            </p>
-            <p>You can decline and request deletion of this invitation instead.</p>
+            <p>{copy.introduction}</p>
+            <p>{copy.role}</p>
+            <p>{copy.consent}</p>
+            <p>{copy.decline}</p>
             <div className={styles.actions}>
               <Button type="primary" onClick={() => void respond('accept')}>
-                Accept and verify
+                {copy.acceptAction}
               </Button>
-              <Button onClick={() => void respond('decline')}>Decline and delete</Button>
+              <Button onClick={() => void respond('decline')}>{copy.declineAction}</Button>
             </div>
           </>
         )}
-        {state === 'sending' && <p role="status">Processing your choice…</p>}
-        {state === 'accepted' && <p role="status">Your choice was submitted. If this invitation was active, your email was verified and the role was accepted.</p>}
-        {state === 'declined' && <p role="status">Your choice was submitted. If this invitation was active, it was declined and deleted.</p>}
-        {state === 'error' && <p role="alert">This link is invalid or the response could not be submitted. Ask the owner for a new invitation if needed.</p>}
+        {state === 'sending' && <p role="status">{copy.sending}</p>}
+        {state === 'accepted' && <p role="status">{copy.accepted}</p>}
+        {state === 'declined' && <p role="status">{copy.declined}</p>}
+        {state === 'error' && <p role="alert">{copy.error}</p>}
       </div>
     </main>
   );

@@ -1,0 +1,75 @@
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000714",
+  "data": {
+    "view": {
+      "available": true,
+      "sampleRecoveryAvailable": true,
+      "ownerEmail": "synthetic-owner@example.test",
+      "recipients": [
+        {
+          "id": "owner",
+          "kind": "owner",
+          "email": "synthetic-owner@example.test"
+        }
+      ],
+      "session": {
+        "id": "00000000-0000-4000-8000-000000000700",
+        "version": 1,
+        "stage": "preparing",
+        "includeRecovery": true,
+        "recipientId": "owner",
+        "recipientEmail": "synthetic-owner@example.test",
+        "warningAt": null,
+        "dueAt": null,
+        "releaseAt": null,
+        "nextAt": null,
+        "expiresAt": "2026-10-11T02:00:00Z",
+        "observedAt": "2026-10-11T01:00:00Z",
+        "warningTransport": "not_started",
+        "notificationTransport": "not_started",
+        "warningConfirmed": false,
+        "recipientVerified": false,
+        "sampleState": "absent",
+        "activityStopped": false,
+        "evidence": [
+          {
+            "key": "trigger",
+            "outcome": "not_tested",
+            "observedAt": null
+          },
+          {
+            "key": "warning",
+            "outcome": "not_tested",
+            "observedAt": null
+          },
+          {
+            "key": "notification",
+            "outcome": "not_tested",
+            "observedAt": null
+          },
+          {
+            "key": "recipient",
+            "outcome": "not_tested",
+            "observedAt": null
+          },
+          {
+            "key": "recovery",
+            "outcome": "not_tested",
+            "observedAt": null
+          },
+          {
+            "key": "activity",
+            "outcome": "not_tested",
+            "observedAt": null
+          }
+        ]
+      }
+    },
+    "challenge": {
+      "id": "00000000-0000-4000-8000-000000000703",
+      "expiresAt": "2026-10-11T01:10:00Z",
+      "resendAfterSeconds": 60
+    }
+  }
+}

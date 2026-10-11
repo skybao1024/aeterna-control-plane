@@ -20,6 +20,7 @@ from app.models.account_policy import (
 )
 from app.models.aeterna_identity import AeternaAccount
 from app.models.aeterna_notification import AeternaEmailOutboxEvent
+from app.services.internal.inactivity_timing import due_inactivity_transition
 
 MIN_INACTIVITY_SECONDS = 14 * 24 * 60 * 60
 MAX_INACTIVITY_SECONDS = 365 * 24 * 60 * 60
@@ -260,64 +261,40 @@ class AccountPolicyTransitionService:
 
             state = self._state(policy)
             now = self._now()
-            if state is AccountPolicyState.ACTIVE:
-                warning_at = policy.due_at - timedelta(
-                    seconds=policy.warning_window_seconds
+            try:
+                due = due_inactivity_transition(
+                    state=state.value,
+                    now=now,
+                    due_at=policy.due_at,
+                    warning_window_seconds=policy.warning_window_seconds,
+                    grace_window_seconds=policy.grace_window_seconds,
+                    grace_started_at=policy.grace_started_at,
+                    owner_warning_proven_at=policy.owner_warning_proven_at,
                 )
-                if now < warning_at:
-                    return self._result(TransitionOutcome.NOOP, policy)
+            except ValueError as exc:
+                raise InvalidAccountPolicyTransitionError(str(exc)) from None
+            if due is not None:
+                event_type, notification_type = {
+                    "PRE_WARNING": (
+                        "account-policy-pre-warning-started",
+                        OWNER_PRE_WARNING,
+                    ),
+                    "GRACE_PERIOD": (
+                        "account-policy-grace-started",
+                        OWNER_GRACE_STARTED,
+                    ),
+                    "RELEASED": ("account-policy-released", OWNER_RELEASE_AUTHORIZED),
+                }[due.target_state]
                 return await self._write_mutation(
                     db=db,
                     policy=policy,
                     operation=operation,
-                    target_state=AccountPolicyState.PRE_WARNING,
-                    event_type="account-policy-pre-warning-started",
-                    notification_type=OWNER_PRE_WARNING,
+                    target_state=AccountPolicyState(due.target_state),
+                    event_type=event_type,
+                    notification_type=notification_type,
                     idempotency_key=idempotency_key,
                     now=now,
-                    values={"warning_started_at": now},
-                )
-
-            if state is AccountPolicyState.PRE_WARNING:
-                if now < policy.due_at:
-                    return self._result(TransitionOutcome.NOOP, policy)
-                return await self._write_mutation(
-                    db=db,
-                    policy=policy,
-                    operation=operation,
-                    target_state=AccountPolicyState.GRACE_PERIOD,
-                    event_type="account-policy-grace-started",
-                    notification_type=OWNER_GRACE_STARTED,
-                    idempotency_key=idempotency_key,
-                    now=now,
-                    values={"grace_started_at": now},
-                )
-
-            if state is AccountPolicyState.GRACE_PERIOD:
-                if policy.owner_warning_proven_at is None:
-                    return self._result(TransitionOutcome.NOOP, policy)
-                if policy.grace_started_at is None:
-                    raise InvalidAccountPolicyTransitionError(
-                        "GRACE_PERIOD requires grace_started_at"
-                    )
-                grace_baseline = max(
-                    policy.grace_started_at, policy.owner_warning_proven_at
-                )
-                release_at = grace_baseline + timedelta(
-                    seconds=policy.grace_window_seconds
-                )
-                if now < release_at:
-                    return self._result(TransitionOutcome.NOOP, policy)
-                return await self._write_mutation(
-                    db=db,
-                    policy=policy,
-                    operation=operation,
-                    target_state=AccountPolicyState.RELEASED,
-                    event_type="account-policy-released",
-                    notification_type=OWNER_RELEASE_AUTHORIZED,
-                    idempotency_key=idempotency_key,
-                    now=now,
-                    values={"released_at": now},
+                    values={due.timestamp_field: now},
                 )
 
             return self._result(TransitionOutcome.NOOP, policy)

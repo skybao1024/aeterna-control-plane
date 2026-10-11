@@ -58,7 +58,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Content Security Policy - restrict resource loading
         # Production: strict CSP without unsafe-inline/unsafe-eval
         # Dev/Preview: relaxed CSP to allow Swagger UI (cdn.jsdelivr.net)
-        if self.is_production:
+        if request.url.path == "/trigger-tests/notice":
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'none'; base-uri 'none'; "
+                "form-action 'none'; frame-ancestors 'none'"
+            )
+        elif self.is_production:
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self'; "
                 "script-src 'self'; "
@@ -80,7 +85,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             )
 
         # Referrer Policy - control referrer information
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Referrer-Policy"] = (
+            "no-referrer"
+            if request.url.path == "/trigger-tests/notice"
+            else "strict-origin-when-cross-origin"
+        )
 
         # Permissions Policy - control browser features
         response.headers["Permissions-Policy"] = (

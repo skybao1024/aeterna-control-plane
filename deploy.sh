@@ -168,6 +168,73 @@ start_environment() {
     print_info "API docs: http://localhost:$(get_config_value API_PORT 8001)/client/docs"
 }
 
+configure_trigger_test_notice_origin() {
+    local public_configuration="$1" parsed
+    if [[ -e "$public_configuration" ]]; then
+        if [[ ! -f "$public_configuration" || -L "$public_configuration" ]]; then
+            print_error "Public deployment configuration is unavailable."
+            return 1
+        fi
+        # Parse only this public control as data, including a quoted empty value.
+        # Never execute configuration shell syntax in the new release child.
+        if ! parsed="$(awk '
+            BEGIN { found=0; single_quote=sprintf("%c", 39) }
+            /^[[:space:]]*(export[[:space:]]+)?AETERNA_TRIGGER_TEST_NOTICE_ORIGIN[[:space:]]*=/ {
+                value=$0
+                sub(/^[^=]*=/, "", value)
+                sub(/^[[:space:]]+/, "", value)
+                sub(/[[:space:]]+$/, "", value)
+                quote=substr(value, 1, 1)
+                if (quote == "\"" || quote == single_quote) {
+                    if (length(value) < 2 || substr(value, length(value), 1) != quote) exit 2
+                    value=substr(value, 2, length(value)-2)
+                }
+                if (length(value) > 2048 || (value != "" && value !~ /^https:\/\/[A-Za-z0-9.-]+(:[0-9]+)?\/?$/)) exit 2
+                found=1
+            }
+            END { if (found) print "set:" value; else print "unset:" }
+        ' "$public_configuration" 2>/dev/null)"; then
+            print_error "Public trigger-test notice origin is invalid."
+            return 1
+        fi
+        if [[ "$parsed" == set:* ]]; then
+            AETERNA_TRIGGER_TEST_NOTICE_ORIGIN="${parsed#set:}"
+        fi
+    fi
+    export AETERNA_TRIGGER_TEST_NOTICE_ORIGIN="${AETERNA_TRIGGER_TEST_NOTICE_ORIGIN-https://api.aeternarelay.com}"
+}
+
+verify_trigger_test_release_containers() {
+    local expected_image container_id observed worker_hostname service
+    if ! expected_image="$(docker image inspect --format '{{.Id}}' \
+        "${COMPOSE_PROJECT_NAME}-backend:${IMAGE_TAG}" 2>/dev/null)"; then
+        print_error "Trigger-test runtime verification failed."
+        return 1
+    fi
+    for service in backend celery-worker celery-beat; do
+        if ! container_id="$(compose ps -q "$service" 2>/dev/null)" || \
+            [[ -z "$container_id" ]]; then
+            print_error "Trigger-test runtime verification failed."
+            return 1
+        fi
+        if ! observed="$(docker inspect --format \
+            '{{.Image}}|{{.State.Running}}|{{.State.Health.Status}}' \
+            "$container_id" 2>/dev/null)" || \
+            [[ "$observed" != "$expected_image|true|healthy" ]]; then
+            print_error "Trigger-test runtime verification failed."
+            return 1
+        fi
+        if [[ "$service" == celery-worker ]]; then
+            if ! worker_hostname="$(docker inspect --format '{{.Config.Hostname}}' \
+                "$container_id" 2>/dev/null)"; then
+                print_error "Trigger-test runtime verification failed."
+                return 1
+            fi
+        fi
+    done
+    TRIGGER_TEST_WORKER_HOSTNAME="$worker_hostname"
+}
+
 release_environment() {
     local revision="${1:-}"
     if [[ ! "$revision" =~ ^[a-f0-9]{40}$ ]]; then
@@ -184,6 +251,7 @@ release_environment() {
     : "${AWS_CONFIG_DIRECTORY:?Set the runtime AWS profile directory}"
     export AETERNA_AWS_PROFILE="${AETERNA_AWS_PROFILE:-aeterna-runtime}"
 
+    configure_trigger_test_notice_origin /etc/aeterna/deployment.conf
     export IMAGE_TAG="$revision"
     export AETERNA_USE_RELEASE_IMAGES=1
     export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-aeterna-control-plane}"
@@ -273,6 +341,27 @@ release_environment() {
     fi
     chmod 644 "$diagnostic_tmp"
     mv -f "$diagnostic_tmp" "$diagnostic_file"
+    print_info "Verifying isolated trigger-test runtime..."
+    verify_trigger_test_release_containers
+    diagnostic_file="$release_status_directory/$revision-trigger.json"
+    diagnostic_tmp="$diagnostic_file.tmp"
+    diagnostic_exit=0
+    compose exec -T backend python -m scripts.diagnose_trigger_test_release \
+        --worker-hostname "$TRIGGER_TEST_WORKER_HOSTNAME" \
+        --runtime-containers-verified > "$diagnostic_tmp" 2>/dev/null || diagnostic_exit=$?
+    if [[ "$diagnostic_exit" != "0" && "$diagnostic_exit" != "1" ]] || \
+        ! awk 'NR > 1 || length($0) > 4096 { exit 1 } END { exit NR != 1 }' \
+            "$diagnostic_tmp"; then
+        rm -f "$diagnostic_tmp"
+        print_error "Trigger-test runtime diagnosis failed."
+        return 1
+    fi
+    chmod 644 "$diagnostic_tmp"
+    mv -f "$diagnostic_tmp" "$diagnostic_file"
+    if [[ "$diagnostic_exit" != "0" ]]; then
+        print_error "Trigger-test runtime verification failed."
+        return 1
+    fi
     print_info "Release is healthy. Backup retained at $backup_directory."
 }
 

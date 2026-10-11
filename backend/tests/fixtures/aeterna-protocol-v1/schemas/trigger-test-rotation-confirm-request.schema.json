@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:trigger-test-rotation-confirm-request",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocolVersion"
+    },
+    "signed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canonicalization": {
+          "$ref": "common.schema.json#/$defs/canonicalization"
+        },
+        "domain": {
+          "type": "string",
+          "const": "aeterna.trigger-test.rotation-confirm.v1"
+        },
+        "operation": {
+          "type": "string",
+          "const": "trigger_test.rotation_confirm"
+        },
+        "protocol_version": {
+          "$ref": "common.schema.json#/$defs/protocolVersion"
+        },
+        "signature_version": {
+          "$ref": "common.schema.json#/$defs/signatureVersion"
+        },
+        "request_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "account_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "device_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "sample_vault_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "target_recovery_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "wrapper_digest": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        },
+        "generation": {
+          "type": "integer",
+          "const": 2
+        },
+        "claim_token": {
+          "$ref": "common.schema.json#/$defs/base64url32"
+        }
+      },
+      "required": [
+        "canonicalization",
+        "domain",
+        "operation",
+        "protocol_version",
+        "signature_version",
+        "request_id",
+        "account_id",
+        "device_id",
+        "session_id",
+        "sample_vault_id",
+        "target_recovery_id",
+        "wrapper_digest",
+        "generation",
+        "claim_token"
+      ]
+    },
+    "signature": {
+      "$ref": "common.schema.json#/$defs/base64url64"
+    }
+  },
+  "required": ["protocol_version", "signed", "signature"]
+}

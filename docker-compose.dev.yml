@@ -32,6 +32,7 @@ services:
 
   mailpit:
     image: axllent/mailpit:v1.31.1
+    restart: unless-stopped
     networks:
       - app-network
     environment:
@@ -52,6 +53,9 @@ services:
       POSTGRES_PORT: 5432
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      MAIL_ENCRYPTION: none
     volumes:
       - ./backend:/app
       - backend-logs:/app/logs

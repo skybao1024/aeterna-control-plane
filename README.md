@@ -128,6 +128,10 @@ the host verifies its checksums, loads images, and calls `./deploy.sh release`.
 The server does not build source. The small-host overlay uses one API process,
 one Celery child, memory limits, bounded Redis memory, and rotated Docker logs.
 It preserves the application's established database pool sizes.
+The synthetic CI environment starts all services and verifies initializer startup,
+then pauses only its beat and worker before deterministic database-fixture tests.
+This prevents live ten-second scheduling from mutating fixtures with injected
+clocks. Production release scheduling and all test cases remain enabled.
 
 The `production` GitHub environment requires:
 
@@ -182,6 +186,36 @@ it does not restore old database state automatically.
 Production email and delayed-recovery delivery remain disabled until their
 separate SES and recovery-key setup is approved. Infrastructure health does
 not establish readiness of those external delivery flows.
+
+For the approved hosted trigger-test activation, the new release command defaults
+an unset public `AETERNA_TRIGGER_TEST_NOTICE_ORIGIN` control to
+`https://api.aeternarelay.com`, matching native's compiled origin. An explicit
+value in `/etc/aeterna/deployment.conf` is preserved, including an explicitly empty
+value that disables new starts. The new release child parses only this approved
+public assignment as data, so the first upgrade works when the older installed
+wrapper did not export it. Configuration shell syntax is never executed by this
+new parser. The production Compose overlay injects this control into backend,
+worker and beat. Core settings and the Compose mapping retain their empty
+defaults outside the hosted release command. Invalid
+origins disable new tests; existing sessions remain readable and stoppable.
+No protected runtime environment edit is needed. The additive
+migration chain is `3acbf214b906` → `2ea8c943d6b1` → `a74fa3967484`. Update backend,
+worker and beat together. This does not change normal recovery links, the
+existing email-provider approval or KMS/IAM controls. Infrastructure checks and
+registered task checks do not prove a recipient mailbox or native sample recovery.
+
+The existing root release command checks that backend, worker and beat are healthy
+and run the exact image ID of the full-SHA backend tag. It then writes a separate
+sanitized receipt at `release-status/<full-SHA>-trigger.json`, leaving the recovery
+receipt unchanged. The receipt compares the database revision with the unique
+packaged Alembic head, inspects registration on that exact worker, and checks the
+packaged beat task, ten-second interval and scheduled queue. Beat evidence is a
+configuration check from the identical image, not observed scheduler cadence.
+Only fixed status values and booleans are published; origin values, hostnames,
+credentials and mail contents are excluded. An explicitly empty origin reports
+`disabled` and remains a valid rollout configuration. Failed runtime checks stop
+the release before the current symlink changes. CI reads this receipt through its
+existing restricted SSH path; no Docker access or sudo permission is added.
 
 A cost-controlled shared-key trial can reuse the existing identity KMS key for
 recovery by explicitly enabling `AETERNA_KMS_ALLOW_SHARED_KEY` and assigning
