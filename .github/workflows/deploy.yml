@@ -106,7 +106,7 @@ jobs:
             | gzip -1 > release-bundle/images.tar.gz
           tar -czf release-bundle/release.tar.gz deploy.sh docker-compose.yml \
             docker-compose.prod.yml docker-compose.aws.yml docker-compose.small.yml \
-            docker-compose.release.yml
+            docker-compose.release.yml deployment/ssh-release.sh
           cd release-bundle
           sha256sum images.tar.gz release.tar.gz > checksums.txt
       - name: Upload production release

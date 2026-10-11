@@ -36,7 +36,7 @@ phase=checksum-verification
 phase=archive-validation
 tar -tzf "$incoming/release.tar.gz" | LC_ALL=C sort > "$root/expected-release-files.actual"
 printf '%s\n' deploy.sh docker-compose.yml docker-compose.prod.yml docker-compose.aws.yml \
-    docker-compose.small.yml docker-compose.release.yml | LC_ALL=C sort \
+    docker-compose.small.yml docker-compose.release.yml deployment/ssh-release.sh | LC_ALL=C sort \
     > "$root/expected-release-files.expected"
 cmp "$root/expected-release-files.actual" "$root/expected-release-files.expected" >> "$private_log" 2>&1
 tar -tvzf "$incoming/release.tar.gz" | awk '$1 !~ /^-/ { exit 1 }'
@@ -54,6 +54,13 @@ if [[ ! -e "$release" ]]; then
     chmod 700 "$release/deploy.sh"
 fi
 [[ -d "$release" && ! -L "$release" ]]
+[[ -f "$release/deployment/ssh-release.sh" && \
+    ! -L "$release/deployment/ssh-release.sh" ]]
+
+phase=release-wrapper-update
+install -o root -g root -m 755 "$release/deployment/ssh-release.sh" \
+    /usr/local/sbin/aeterna-release.next
+mv -f /usr/local/sbin/aeterna-release.next /usr/local/sbin/aeterna-release
 
 # This is a root-owned file containing public controls only, never credentials.
 source /etc/aeterna/deployment.conf
