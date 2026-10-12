@@ -17,6 +17,7 @@ public client protocol.
 - [ADR 0007: Custody freshness and recipient management](./architecture/adr/0007-custody-freshness-and-recipient-management.md)
 - [ADR 0008: Signed SRS retrieval and legacy retirement](./architecture/adr/0008-signed-srs-retrieval-and-legacy-retirement.md)
 - [ADR 0009: Isolated inactivity trigger tests](./architecture/adr/0009-isolated-inactivity-trigger-tests.md)
+- [ADR 0010: Post-release computer notice](./architecture/adr/0010-post-release-computer-notice.md)
 
 ## API
 

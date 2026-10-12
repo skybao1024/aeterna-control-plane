@@ -80,7 +80,7 @@ from app.services.common.aeterna_security import (
 
 FIXTURE_ROOT = Path(__file__).parents[1] / "fixtures" / "aeterna-protocol-v1"
 EXPECTED_PUBLIC_RELEASE_DIGEST = (
-    "2997eb49b03235e1e81f4ad55a6a2b0281eed4c1a4613542208328258dc923d9"
+    "c998ebd1d7578e29eedc08074794ab8495af953ae8cedfec7f5681902740c9e9"
 )
 
 
@@ -111,7 +111,7 @@ def make_request(body: bytes, content_type: str = "application/json") -> Request
 
 def test_vendored_public_release_digest_and_every_file_hash_match():
     manifest = load_json("manifest.json")
-    assert manifest["release_tag"] == "protocol-v1.10.0"
+    assert manifest["release_tag"] == "protocol-v1.11.0"
     assert manifest["release_digest"] == EXPECTED_PUBLIC_RELEASE_DIGEST
     for entry in manifest["files"]:
         content = (FIXTURE_ROOT / entry["path"]).read_bytes()
@@ -436,6 +436,8 @@ def test_client_registry_exposes_only_v1_protocol_and_safe_config_routes():
     assert "/api/v1/heartbeats" in paths
     assert "/api/v1/policy" in paths
     assert "/api/v1/setup/status" in paths
+    assert "/api/v1/recovery/notice/read" in paths
+    assert "/api/v1/recovery/notice/resend" in paths
     assert "/api/v1/device-status-changes" in paths
     assert "/api/v1/recovery/records/provision" in paths
     assert "/api/v1/recovery/records/enroll" in paths

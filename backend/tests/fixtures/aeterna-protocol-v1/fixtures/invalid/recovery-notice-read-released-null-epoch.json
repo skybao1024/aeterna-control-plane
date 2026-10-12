@@ -1,0 +1,27 @@
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000300",
+  "data": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "observed_at": "2030-03-01T03:04:05Z",
+    "state": "RELEASED",
+    "epoch": null,
+    "last_activity_at": "2030-01-02T03:04:05Z",
+    "released_at": "2030-02-08T03:04:05Z",
+    "recipients": [
+      {
+        "contact_id": "00000000-0000-4000-8000-000000000301",
+        "email": "family@example.com",
+        "kind": "release",
+        "status": "delivered"
+      },
+      {
+        "contact_id": "00000000-0000-4000-8000-000000000302",
+        "email": "friend@example.com",
+        "kind": "invitation",
+        "status": "submitted"
+      }
+    ]
+  }
+}

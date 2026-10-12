@@ -20,6 +20,11 @@ class RouteConfig:
 # Client route configuration
 CLIENT_ROUTES = [
     RouteConfig(
+        module_path="app.api.client.v1.aeterna_recovery_notice",
+        prefix=f"{settings.API_V1_STR}",
+        tags=["delayed-recovery"],
+    ),
+    RouteConfig(
         module_path="app.api.client.v1.aeterna_trigger_test",
         prefix=f"{settings.API_V1_STR}",
         tags=["isolated-inactivity-tests"],

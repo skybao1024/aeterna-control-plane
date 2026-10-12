@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:recovery-notice-resend-request",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocolVersion"
+    },
+    "signed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "authorizing_device_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "canonicalization": {
+          "$ref": "common.schema.json#/$defs/canonicalization"
+        },
+        "contact_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "domain": {
+          "type": "string",
+          "const": "aeterna.recovery-notice.resend.v1"
+        },
+        "operation": {
+          "type": "string",
+          "const": "recovery_notice.resend"
+        },
+        "protocol_version": {
+          "$ref": "common.schema.json#/$defs/protocolVersion"
+        },
+        "request_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "signature_version": {
+          "$ref": "common.schema.json#/$defs/signatureVersion"
+        }
+      },
+      "required": [
+        "account_id",
+        "authorizing_device_id",
+        "canonicalization",
+        "contact_id",
+        "domain",
+        "operation",
+        "protocol_version",
+        "request_id",
+        "signature_version"
+      ]
+    },
+    "signature": {
+      "$ref": "common.schema.json#/$defs/base64url64"
+    }
+  },
+  "required": ["protocol_version", "signed", "signature"]
+}

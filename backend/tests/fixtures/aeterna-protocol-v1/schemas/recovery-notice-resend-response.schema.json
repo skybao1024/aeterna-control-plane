@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:recovery-notice-resend-response",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocolVersion"
+    },
+    "request_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "device_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "contact_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "observed_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["release", "invitation"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "submitted", "delivered", "failed", "unknown"]
+        },
+        "retry_after_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        }
+      },
+      "required": [
+        "account_id",
+        "device_id",
+        "contact_id",
+        "observed_at",
+        "kind",
+        "status",
+        "retry_after_seconds"
+      ]
+    }
+  },
+  "required": ["protocol_version", "request_id", "data"]
+}

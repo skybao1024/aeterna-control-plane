@@ -28,6 +28,8 @@ The client account/device routes implement the public desktop protocol v1 at:
 - `POST /api/v1/contact-invitations/respond`
 - `PUT /api/v1/notifications/template`
 - `POST /api/v1/notifications/test`
+- `POST /api/v1/recovery/notice/read`
+- `POST /api/v1/recovery/notice/resend`
 
 These routes manually enforce the public transport boundary before Pydantic
 validation: exact JSON media type, a 16,384-byte limit, UTF-8 I-JSON, no BOM,
@@ -58,6 +60,37 @@ the request body. Unknown fields, phone numbers, SMS channels, headers,
 attachments, arbitrary HTML, and message text over 4,096 UTF-8 bytes are
 rejected. Contact status exposes consent and transport state without provider
 message identifiers, recipient addresses, or message bodies.
+
+The computer notice read uses `aeterna.recovery-notice.read.v1` and
+`recovery_notice.read`. Its device-signed request includes account and
+authorizing-device identifiers and at most ten unique known contact IDs. The
+service returns the current server policy state; only a `RELEASED` policy may
+include exact release timing and known recipients' full email addresses.
+Recipients must have actual current-policy release mail events, so invitation,
+test, OTP and historical delivery evidence cannot be mistaken for a current
+release email. Active devices may read the current state. A dormant device's
+pinned signature authorizes only a released notice, with no reactivation,
+activity, recovery-factor, mailbox, or management authority. Lost and revoked
+devices remain denied. This response uses `Cache-Control: no-store` and contains
+no custom Owner text, claim link, OTP, token or recovery factors. See
+[the computer-notice decision](../architecture/adr/0010-post-release-computer-notice.md).
+
+The explicit computer-notice resend uses `aeterna.recovery-notice.resend.v1` and
+`recovery_notice.resend`. Its signed request identifies one existing account-owned
+contact; it accepts no email address, message or recovery token. The exact current
+policy must be `RELEASED`. Active and dormant pinned devices may queue this
+bounded email action without obtaining ordinary activity or recovery authority.
+An accepted verified contact receives one new recovery-entry email for an
+available current epoch/generation grant on this authorizing device. An
+unaccepted private target receives only the existing neutral invitation. No new
+recipient or grant is created. A valid earlier entry remains valid under the
+existing mailbox-verification rules. The result reports only IDs, server time,
+mail kind, queued status and a 60-second retry interval; no link or factor is
+returned. Exact signed retries return the durable original receipt without a
+second mail; changed request-ID reuse conflicts. Limits share the existing 30
+account actions/day and five recipient actions/day, add ten resends/device/day,
+and enforce a durable 60-second target cooldown. The existing dispatcher owns
+actual provider delivery and its separate transport evidence.
 
 The AWS SES event callback is intentionally excluded from Client and
 Backoffice Swagger. `POST /api/internal/v1/email-events/aws-sns` accepts only a

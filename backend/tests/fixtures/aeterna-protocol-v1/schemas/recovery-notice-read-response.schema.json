@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:aeterna:protocol:v1:recovery-notice-read-response",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "$ref": "common.schema.json#/$defs/protocolVersion"
+    },
+    "request_id": {
+      "$ref": "common.schema.json#/$defs/uuid"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "device_id": {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        "observed_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "NOT_CONFIGURED",
+            "ACTIVE",
+            "PRE_WARNING",
+            "GRACE_PERIOD",
+            "RELEASED",
+            "DISABLED",
+            "DELETED"
+          ]
+        },
+        "epoch": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_activity_at": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "released_at": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recipients": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "x-aeterna-unique-contact-ids": true,
+          "x-aeterna-requested-contact-ids-only": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "contact_id": {
+                "$ref": "common.schema.json#/$defs/uuid"
+              },
+              "email": {
+                "$ref": "common.schema.json#/$defs/email"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["release", "invitation"]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "submitted",
+                  "delivered",
+                  "failed",
+                  "unknown"
+                ]
+              }
+            },
+            "required": ["contact_id", "email", "kind", "status"]
+          }
+        }
+      },
+      "required": [
+        "account_id",
+        "device_id",
+        "observed_at",
+        "state",
+        "epoch",
+        "last_activity_at",
+        "released_at",
+        "recipients"
+      ],
+      "if": {
+        "properties": {
+          "state": {
+            "const": "RELEASED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "last_activity_at": {
+            "$ref": "common.schema.json#/$defs/timestamp"
+          },
+          "released_at": {
+            "$ref": "common.schema.json#/$defs/timestamp"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "released_at": {
+            "type": "null"
+          },
+          "recipients": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  },
+  "required": ["protocol_version", "request_id", "data"]
+}

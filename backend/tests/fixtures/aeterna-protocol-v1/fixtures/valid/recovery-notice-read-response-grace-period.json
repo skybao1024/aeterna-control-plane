@@ -1,0 +1,14 @@
+{
+  "protocol_version": 1,
+  "request_id": "00000000-0000-4000-8000-000000000300",
+  "data": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "device_id": "00000000-0000-4000-8000-000000000003",
+    "observed_at": "2030-03-01T03:04:05Z",
+    "state": "GRACE_PERIOD",
+    "epoch": 1,
+    "last_activity_at": "2030-01-02T03:04:05Z",
+    "released_at": null,
+    "recipients": []
+  }
+}

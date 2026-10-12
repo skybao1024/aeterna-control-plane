@@ -1,0 +1,16 @@
+{
+  "protocol_version": 1,
+  "signed": {
+    "account_id": "00000000-0000-4000-8000-000000000020",
+    "authorizing_device_id": "00000000-0000-4000-8000-000000000003",
+    "canonicalization": "jcs-rfc8785",
+    "contact_id": "00000000-0000-4000-8000-000000000301",
+    "domain": "aeterna.recovery-notice.resend.v1",
+    "operation": "recovery_notice.resend",
+    "protocol_version": 1,
+    "request_id": "00000000-0000-4000-8000-000000000303",
+    "signature_version": 1,
+    "email": "arbitrary@example.com"
+  },
+  "signature": "U7GymO_JPmHDLKmso_P73VPeHkaeiOH9T7nJJIV1wI0W3OxMxrO8gvj3w8_ui296DwSCj7ayxfFls6xFr9lFCA"
+}

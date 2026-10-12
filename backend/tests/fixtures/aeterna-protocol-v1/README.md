@@ -175,6 +175,9 @@ input value, or local encrypted content. ADR 0020 explicitly permits the
 active-device-only configuration operations to return the Owner mailbox, at most
 ten known account-owned contact addresses, and saved notification messages.
 These operations never discover contacts; deleted contact addresses are null.
+ADR 0031 additionally permits the signed post-release device notice to return
+full addresses for at most ten known account-owned contacts, with the policy
+release time and mail transport evidence described below.
 Template reads return one field per response under the 16 KiB bound. Field edits
 use a signed expected version, an account lock and atomic compare-and-set,
 preserve the counterpart, and return structural receipts only. All configuration
@@ -188,8 +191,7 @@ requests, logs, error bodies, audit fixtures, and all other operations.
 ADR 0027 adds the closed, device-signed `/api/v1/trigger-tests/{operation}`
 operations and distinct `aeterna.trigger-test.<operation>.v1` domains. These
 additive resources share no production policy, heartbeat, recovery grant or
-management state. The prepared package release is `protocol-v1.10.0`; it has not
-been published or deployed. The exact operation fields are normative JSON
+management state. The exact operation fields are normative JSON
 schemas, with generated synthetic signatures and cross-domain/extra-field
 negative fixtures. The operation literal replaces route hyphens with underscores
 under `trigger_test.*`.
@@ -222,3 +224,71 @@ The native safe view can project the locally observed sample state while the
 service retains authoritative lifecycle/evidence. Expiry/cleanup invalidate
 unused capabilities and remove exact isolated test resources; mail or factors
 already copied cannot be recalled.
+
+## Post-release device recovery notice
+
+ADR 0031 adds the read-only signed `POST /api/v1/recovery/notice/read` operation
+under `aeterna.recovery-notice.read.v1` and `recovery_notice.read`. The prepared
+package release is `protocol-v1.11.0`; it has not been published or deployed.
+Existing signed documents remain unchanged. The signed request contains the
+account ID, `authorizing_device_id`, request ID, versions, canonicalization, and
+at most ten unique known account-owned `contact_ids`. The device ID selects the
+key; only proof by the exact bound device authorizes the request. Unknown and
+cross-account contact IDs fail closed. The operation cannot discover contacts.
+
+An active device can read the current policy state. A pinned dormant device may
+read only its exact released recovery source. Lost or revoked devices cannot
+authorize this operation. The response binds `account_id`, `device_id`, and
+`request_id` to the signed request and uses server UTC `observed_at`. The closed
+states are `NOT_CONFIGURED`, `ACTIVE`, `PRE_WARNING`, `GRACE_PERIOD`, `RELEASED`,
+`DISABLED`, and `DELETED`. Only `RELEASED` returns non-null `released_at` and any
+recipients; that state also requires a positive epoch and `last_activity_at`.
+Other states have null `released_at` and an empty recipient list. These times
+describe accepted activity and the service release; they do not establish that
+the Owner is dead, unavailable, or the operator of a subsequent computer session.
+
+The user-approved notice displays full email addresses without requiring a
+library password. Responses contain at most one entry per requested contact,
+limited to `contact_id`, normalized `email`, mail `kind`, and transport `status`.
+Both `x-aeterna-unique-contact-ids` and
+`x-aeterna-requested-contact-ids-only` are mandatory runtime constraints. Only
+events bound to the exact current release epoch/generation/source contribute.
+A contact's release mail takes precedence over a release invitation. Status is
+`delivered` when any matching mail has delivery evidence; `submitted` when a
+matching provider acceptance has no known failure; `pending` for queued, sending,
+or retry-pending mail; `failed` when all matching mails have failed, bounced,
+complained, or been cancelled; and `unknown` when evidence is absent or ambiguous.
+Provider acceptance and delivery do not prove that the recipient read the mail.
+
+All responses require `Cache-Control: no-store`. No token, link capability,
+notification content, Owner message, library content, password, ERC, VDK, or SRS
+is returned. Personal values never enter logs, receipts, or audit descriptions.
+The read does not submit activity, alter policy state, retry mail, grant recovery,
+or retrieve recovery factors. Synthetic fixtures cover every policy state,
+transport status, closed fields, contact bounds, release constraints, and signed
+domain/contact-set tampering.
+
+The separately signed `POST /api/v1/recovery/notice/resend` operation uses
+`aeterna.recovery-notice.resend.v1` and `recovery_notice.resend`. Its closed
+request binds one existing account-owned `contact_id`, the account and exact
+authorizing device, request ID, versions, and canonicalization. No email address,
+new contact, message, URL, invitation token, or recovery capability can be supplied.
+After authoritative `RELEASED`, an active device or the exact pinned dormant
+source device may request another copy of the designated recipient's existing
+release mail or release invitation. Lost/revoked devices, unrelated contacts,
+and pre-release policies fail closed. The service selects the mail kind from
+current release evidence; the caller cannot change it or add recovery authority.
+
+Resend responses bind the account, device, contact, and request identifiers and
+return only server `observed_at`, `kind`, transport `status`, and an integer
+`retry_after_seconds` from 1 through 86,400. They contain no address, message,
+link, token, or recovery factor and require `Cache-Control: no-store`. A pending
+receipt establishes queued work only; provider submission and delivery retain
+the limitations above. Replaying the same signed request is idempotent; the
+same request ID with changed signed fields is a conflict. Concurrent requests
+must not create duplicate pending mail, and a server-enforced 60-second cooldown
+per target bounds further resend attempts. Rate limits use
+`notification.rate_limited` with a bounded retry interval; an unavailable current
+source uses the existing `recovery.record_unavailable` conflict response.
+Resending does not record activity, reset inactivity,
+change policy release state, bypass mailbox verification, or authorize recovery.

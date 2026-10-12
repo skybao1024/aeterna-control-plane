@@ -452,29 +452,13 @@ class AeternaRecoveryService:
                 )
                 db.add(grant)
                 await db.flush()
-                link_id = self.uuid_factory()
-                link_token = derive_recovery_link_token(keys, link_id)
-                link = AeternaRecoveryClaimLink(
-                    id=link_id,
-                    grant_id=grant.id,
-                    token_digest=token_digest(link_token),
-                    token_key_version=keys.version,
-                    status="active",
-                    expires_at=now + CLAIM_LINK_LIFETIME,
-                    created_at=now,
-                    updated_at=now,
-                )
-                db.add(link)
-                await db.flush()
-                event = self._email_event(
-                    account_id=account_id,
-                    contact_id=contact.id,
-                    event_type="recovery-claim-link",
-                    idempotency_key=f"recovery-claim-link:{grant.id}",
+                await self.queue_grant_email(
+                    db,
+                    grant=grant,
+                    keys=keys,
                     now=now,
-                    recovery_link_id=link.id,
+                    idempotency_key=f"recovery-claim-link:{grant.id}",
                 )
-                db.add(event)
                 created.append(grant.id)
                 self._audit(
                     db,
@@ -487,6 +471,43 @@ class AeternaRecoveryService:
                 )
         await db.commit()
         return created
+
+    async def queue_grant_email(
+        self,
+        db: AsyncSession,
+        *,
+        grant: AeternaRecoveryGrant,
+        keys: AeternaIdentityKeys,
+        now: datetime,
+        idempotency_key: str,
+    ) -> AeternaEmailOutboxEvent:
+        """Queue an existing-format entry without consuming a grant or committing."""
+        if grant.state != "available":
+            raise AeternaProtocolException(409, "recovery.record_unavailable")
+        link_id = self.uuid_factory()
+        link_token = derive_recovery_link_token(keys, link_id)
+        link = AeternaRecoveryClaimLink(
+            id=link_id,
+            grant_id=grant.id,
+            token_digest=token_digest(link_token),
+            token_key_version=keys.version,
+            status="active",
+            expires_at=now + CLAIM_LINK_LIFETIME,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(link)
+        await db.flush()
+        event = self._email_event(
+            account_id=grant.account_id,
+            contact_id=grant.contact_id,
+            event_type="recovery-claim-link",
+            idempotency_key=idempotency_key,
+            now=now,
+            recovery_link_id=link.id,
+        )
+        db.add(event)
+        return event
 
     async def start_claim(
         self, db: AsyncSession, payload: RecoveryClaimStartRequest

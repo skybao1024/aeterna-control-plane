@@ -178,8 +178,16 @@
       "http_status": 409
     },
     {
+      "code": "notification.rate_limited",
+      "http_status": 429
+    },
+    {
       "code": "contact.not_found",
       "http_status": 404
+    },
+    {
+      "code": "contact.recipient_unavailable",
+      "http_status": 400
     },
     {
       "code": "recovery.recipient_rotation_unavailable",
